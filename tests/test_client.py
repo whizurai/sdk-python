@@ -1,525 +1,271 @@
-"""
-Tests for the Whizurai client.
-"""
+"""Tests for the capability-first WhizuraiClient (mocked HTTP)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ConnectError, TimeoutException
 
-from whizurai import (APIError, AuthenticationError, CheckoutRequest,
-                           CheckoutResponse, WhizuraiClient, ClientConfig,
-                           ContentType, EnrichRequest, EnrichResponse,
-                           FileInfo, GenerateRequest, GenerateResponse,
-                           HealthResponse, JobInfo, JobStatus, ModelInfo,
-                           ModerateRequest, ModerateResponse, NetworkError,
-                           RateLimitError, RecommendRequest, RecommendResponse,
-                           RouteRequest, RouteResponse, SearchRequest,
-                           SearchResponse, SentimentType, StatusResponse,
-                           TimeoutError, UploadResponse, UsageStats,
-                           ValidationError, create_client,
-                           create_client_from_env)
-
-
-class TestWhizuraiClient:
-    """Test cases for WhizuraiClient."""
-
-    @pytest.fixture
-    def config(self):
-        """Create a test configuration."""
-        return ClientConfig(
-            api_key="test_api_key",
-            base_url="http://localhost:3000",
-            timeout=30.0,
-            max_retries=3,
-            retry_delay=1.0,
-        )
-
-    @pytest.fixture
-    def client(self, config):
-        """Create a test client."""
-        return WhizuraiClient(config)
-
-    @pytest.fixture
-    def mock_response(self):
-        """Create a mock HTTP response."""
-        response = MagicMock()
-        response.json.return_value = {"success": True, "data": {}}
-        response.status_code = 200
-        response.headers = {}
-        return response
-
-    @pytest.mark.asyncio
-    async def test_client_initialization(self, config):
-        """Test client initialization."""
-        client = WhizuraiClient(config)
-        assert client.config == config
-        assert client.base_url == "http://localhost:3000"
-        assert client.api_key == "test_api_key"
-        assert client.timeout == 30.0
-        assert client.max_retries == 3
-        assert client.retry_delay == 1.0
-        await client.close()
-
-    @pytest.mark.asyncio
-    async def test_context_manager(self, config):
-        """Test client as context manager."""
-        async with WhizuraiClient(config) as client:
-            assert isinstance(client, WhizuraiClient)
-
-    @pytest.mark.asyncio
-    async def test_generate_success(self, client, mock_response):
-        """Test successful content generation."""
-        mock_response.json.return_value = {
-            "content": "Generated content",
-            "model": "gpt-3.5-turbo",
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = GenerateRequest(prompt="Test prompt")
-            response = await client.generate(request)
-
-            assert isinstance(response, GenerateResponse)
-            assert response.content == "Generated content"
-            assert response.model == "gpt-3.5-turbo"
-            assert response.usage["total_tokens"] == 30
-
-    @pytest.mark.asyncio
-    async def test_generate_validation_error(self, client):
-        """Test content generation with validation error."""
-        mock_response = MagicMock()
-        mock_response.status_code = 422
-        mock_response.json.return_value = {"message": "Validation error"}
-        mock_response.content = b'{"message": "Validation error"}'
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(ValidationError, match="Validation error"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_generate_authentication_error(self, client):
-        """Test content generation with authentication error."""
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_response.json.return_value = {"message": "Invalid API key"}
-        mock_response.content = b'{"message": "Invalid API key"}'
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(AuthenticationError, match="Invalid API key"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_generate_rate_limit_error(self, client):
-        """Test content generation with rate limit error."""
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_response.headers = {"Retry-After": "60"}
-        mock_response.json.return_value = {"message": "Rate limit exceeded"}
-        mock_response.content = b'{"message": "Rate limit exceeded"}'
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(RateLimitError, match="Rate limit exceeded"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_generate_retry_logic(self, client):
-        """Test retry logic for server errors."""
-        # First two calls fail with 500, third succeeds
-        mock_responses = [
-            MagicMock(
-                status_code=500,
-                json=MagicMock(return_value={"message": "Server error"}),
-                content=b'{"message": "Server error"}',
-            ),
-            MagicMock(
-                status_code=500,
-                json=MagicMock(return_value={"message": "Server error"}),
-                content=b'{"message": "Server error"}',
-            ),
-            MagicMock(
-                status_code=200,
-                json=MagicMock(
-                    return_value={
-                        "content": "Generated content",
-                        "model": "gpt-3.5-turbo",
-                        "usage": {
-                            "prompt_tokens": 10,
-                            "completion_tokens": 20,
-                            "total_tokens": 30,
-                        },
-                    }
-                ),
-            ),
-        ]
-
-        with patch.object(client.client, "request", side_effect=mock_responses):
-            request = GenerateRequest(prompt="Test prompt")
-            response = await client.generate(request)
-
-            assert response.content == "Generated content"
-
-    @pytest.mark.asyncio
-    async def test_generate_max_retries_exceeded(self, client):
-        """Test that max retries are respected."""
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.json.return_value = {"message": "Server error"}
-        mock_response.content = b'{"message": "Server error"}'
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(APIError, match="Server error"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_generate_timeout_error(self, client):
-        """Test timeout error handling."""
-        with patch.object(
-            client.client, "request", side_effect=TimeoutException("Request timeout")
-        ):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(TimeoutError, match="Request timeout"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_generate_network_error(self, client):
-        """Test network error handling."""
-        with patch.object(
-            client.client, "request", side_effect=ConnectError("Connection failed")
-        ):
-            request = GenerateRequest(prompt="Test prompt")
-
-            with pytest.raises(NetworkError, match="Connection failed"):
-                await client.generate(request)
-
-    @pytest.mark.asyncio
-    async def test_enrich_success(self, client, mock_response):
-        """Test successful content enrichment."""
-        mock_response.json.return_value = {
-            "tags": ["technology", "ai"],
-            "summary": "Test summary",
-            "sentiment": "positive",
-            "confidence": 0.95,
-            "quality_score": 0.8,
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = EnrichRequest(content="Test content", type=ContentType.TEXT)
-            response = await client.enrich(request)
-
-            assert isinstance(response, EnrichResponse)
-            assert response.tags == ["technology", "ai"]
-            assert response.summary == "Test summary"
-            assert response.sentiment == SentimentType.POSITIVE
-            assert response.confidence == 0.95
-
-    @pytest.mark.asyncio
-    async def test_search_success(self, client, mock_response):
-        """Test successful semantic search."""
-        mock_response.json.return_value = {
-            "results": [
-                {
-                    "id": "1",
-                    "content": "Test content",
-                    "score": 0.95,
-                    "metadata": {"type": "document"},
-                }
-            ],
-            "total": 1,
-            "query": "test query",
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = SearchRequest(query="test query")
-            response = await client.search(request)
-
-            assert isinstance(response, SearchResponse)
-            assert len(response.results) == 1
-            assert response.results[0].id == "1"
-            assert response.results[0].score == 0.95
-            assert response.total == 1
-
-    @pytest.mark.asyncio
-    async def test_recommend_success(self, client, mock_response):
-        """Test successful recommendations."""
-        mock_response.json.return_value = {
-            "recommendations": [
-                {"id": "item1", "score": 0.9, "reason": "Similar to your interests"}
-            ],
-            "user_id": "user123",
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = RecommendRequest(user_id="user123")
-            response = await client.recommend(request)
-
-            assert isinstance(response, RecommendResponse)
-            assert len(response.recommendations) == 1
-            assert response.recommendations[0].id == "item1"
-            assert response.user_id == "user123"
-
-    @pytest.mark.asyncio
-    async def test_moderate_success(self, client, mock_response):
-        """Test successful content moderation."""
-        mock_response.json.return_value = {
-            "safe": True,
-            "confidence": 0.95,
-            "categories": [],
-            "explanation": "Content is safe",
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = ModerateRequest(content="Test content", type=ContentType.TEXT)
-            response = await client.moderate(request)
-
-            assert isinstance(response, ModerateResponse)
-            assert response.safe is True
-            assert response.confidence == 0.95
-            assert response.explanation == "Content is safe"
-
-    @pytest.mark.asyncio
-    async def test_upload_file_success(self, client, mock_response, tmp_path):
-        """Test successful file upload."""
-        mock_response.json.return_value = {
-            "id": "file123",
-            "url": "https://example.com/file123",
-            "size": 1024,
-            "type": "image/jpeg",
-        }
-
-        # Create a test file
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("Test content")
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.upload_file(str(test_file))
-
-            assert isinstance(response, UploadResponse)
-            assert response.id == "file123"
-            assert response.url == "https://example.com/file123"
-            assert response.size == 1024
-
-    @pytest.mark.asyncio
-    async def test_upload_file_not_found(self, client):
-        """Test file upload with non-existent file."""
-        with pytest.raises(FileNotFoundError):
-            await client.upload_file("nonexistent.txt")
-
-    @pytest.mark.asyncio
-    async def test_get_file_success(self, client, mock_response):
-        """Test successful file retrieval."""
-        mock_response.json.return_value = {
-            "id": "file123",
-            "url": "https://example.com/file123",
-            "size": 1024,
-            "type": "image/jpeg",
-            "metadata": {"name": "test.jpg"},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.get_file("file123")
-
-            assert isinstance(response, FileInfo)
-            assert response.id == "file123"
-            assert response.size == 1024
-
-    @pytest.mark.asyncio
-    async def test_get_job_success(self, client, mock_response):
-        """Test successful job retrieval."""
-        mock_response.json.return_value = {
-            "id": "job123",
-            "status": "completed",
-            "type": "generation",
-            "progress": 100.0,
-            "result": {"content": "Generated content"},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.get_job("job123")
-
-            assert isinstance(response, JobInfo)
-            assert response.id == "job123"
-            assert response.status == JobStatus.COMPLETED
-            assert response.progress == 100.0
-
-    @pytest.mark.asyncio
-    async def test_checkout_success(self, client, mock_response):
-        """Test successful checkout creation."""
-        mock_response.json.return_value = {
-            "session_id": "cs_test_123",
-            "url": "https://checkout.stripe.com/c/pay/cs_test_123",
-            "amount": 2000,
-            "currency": "usd",
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = CheckoutRequest(items=[{"id": "item1", "price": 2000}])
-            response = await client.checkout(request)
-
-            assert isinstance(response, CheckoutResponse)
-            assert response.session_id == "cs_test_123"
-            assert response.amount == 2000
-
-    @pytest.mark.asyncio
-    async def test_get_usage_success(self, client, mock_response):
-        """Test successful usage retrieval."""
-        mock_response.json.return_value = {
-            "total_requests": 1000,
-            "total_tokens": 50000,
-            "total_cost": 10.50,
-            "requests_by_endpoint": {"generate": 500, "enrich": 300},
-            "tokens_by_model": {"gpt-3.5-turbo": 30000, "gpt-4": 20000},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.get_usage()
-
-            assert isinstance(response, UsageStats)
-            assert response.total_requests == 1000
-            assert response.total_cost == 10.50
-
-    @pytest.mark.asyncio
-    async def test_get_models_success(self, client, mock_response):
-        """Test successful model retrieval."""
-        mock_response.json.return_value = {
-            "models": [
-                {
-                    "id": "gpt-3.5-turbo",
-                    "name": "GPT-3.5 Turbo",
-                    "provider": "openai",
-                    "type": "text",
-                    "capabilities": ["generation", "completion"],
-                    "cost_per_token": 0.000002,
-                    "max_tokens": 4096,
-                    "available": True,
-                }
-            ]
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.get_models()
-
-            assert len(response) == 1
-            assert isinstance(response[0], ModelInfo)
-            assert response[0].id == "gpt-3.5-turbo"
-            assert response[0].provider == "openai"
-
-    @pytest.mark.asyncio
-    async def test_route_model_success(self, client, mock_response):
-        """Test successful model routing."""
-        mock_response.json.return_value = {
-            "model": "gpt-3.5-turbo",
-            "provider": "openai",
-            "reason": "Best cost-performance ratio",
-            "estimated_cost": 0.01,
-            "confidence": 0.9,
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            request = RouteRequest(prompt="Test prompt", type="generation")
-            response = await client.route_model(request)
-
-            assert isinstance(response, RouteResponse)
-            assert response.model == "gpt-3.5-turbo"
-            assert response.provider == "openai"
-
-    @pytest.mark.asyncio
-    async def test_health_check_success(self, client, mock_response):
-        """Test successful health check."""
-        mock_response.json.return_value = {
-            "status": "healthy",
-            "timestamp": "2024-01-01T00:00:00Z",
-            "uptime": 3600.0,
-            "version": "0.2.0",
-            "services": {"api": "healthy", "db": "healthy"},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.health_check()
-
-            assert isinstance(response, HealthResponse)
-            assert response.status == "healthy"
-            assert response.version == "0.2.0"
-
-    @pytest.mark.asyncio
-    async def test_get_status_success(self, client, mock_response):
-        """Test successful status retrieval."""
-        mock_response.json.return_value = {
-            "status": "operational",
-            "version": "0.2.0",
-            "timestamp": "2024-01-01T00:00:00Z",
-            "features": ["generation", "enrichment", "search"],
-            "limits": {"requests_per_minute": 100},
-        }
-
-        with patch.object(client.client, "request", return_value=mock_response):
-            response = await client.get_status()
-
-            assert isinstance(response, StatusResponse)
-            assert response.status == "operational"
-            assert "generation" in response.features
-
-    @pytest.mark.asyncio
-    async def test_ping_success(self, client):
-        """Test successful ping."""
-        with patch.object(client, "health_check", return_value=MagicMock()):
-            result = await client.ping()
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_ping_failure(self, client):
-        """Test failed ping."""
-        with patch.object(
-            client, "health_check", side_effect=Exception("Connection failed")
-        ):
-            result = await client.ping()
-            assert result is False
-
-
-class TestClientFactories:
-    """Test cases for client factory functions."""
+from whizurai import (
+    APIError,
+    AuthenticationError,
+    ClientConfig,
+    NetworkError,
+    NotFoundError,
+    RateLimitError,
+    Run,
+    RunStatus,
+    TimeoutError,
+    ValidationError,
+    WhizuraiClient,
+    create_client,
+)
+
+
+def make_config(**overrides):
+    base = dict(
+        api_key="test_api_key",
+        base_url="http://localhost:3000",
+        timeout=5.0,
+        max_retries=2,
+        retry_delay=0.0,
+    )
+    base.update(overrides)
+    return ClientConfig(**base)
+
+
+def fake_response(status_code=200, json_data=None, headers=None):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = json_data if json_data is not None else {}
+    resp.content = b"{}" if json_data is None else b'{"x":1}'
+    resp.headers = headers or {}
+    resp.reason_phrase = "OK"
+    return resp
+
+
+@pytest.fixture
+def client():
+    return WhizuraiClient(make_config())
+
+
+class TestInitialization:
+    async def test_init(self):
+        c = WhizuraiClient(make_config())
+        assert c.base_url == "http://localhost:3000"
+        assert c.api_key == "test_api_key"
+        assert c.capabilities and c.runs and c.artifacts and c.triggers
+        await c.close()
 
     def test_create_client(self):
-        """Test create_client function."""
-        config = ClientConfig(api_key="test_key")
-        client = create_client(config)
-        assert isinstance(client, WhizuraiClient)
-        assert client.config == config
+        assert isinstance(create_client(make_config()), WhizuraiClient)
 
-    @patch.dict("os.environ", {"CHEDDARWHIZZY_API_KEY": "test_key"})
-    def test_create_client_from_env(self):
-        """Test create_client_from_env function."""
-        client = create_client_from_env()
-        assert isinstance(client, WhizuraiClient)
-        assert client.api_key == "test_key"
+    async def test_context_manager(self):
+        async with WhizuraiClient(make_config()) as c:
+            assert isinstance(c, WhizuraiClient)
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_create_client_from_env_missing_key(self):
-        """Test create_client_from_env with missing API key."""
-        with pytest.raises(
-            ValueError, match="CHEDDARWHIZZY_API_KEY environment variable is required"
-        ):
-            create_client_from_env()
 
-    @patch.dict(
-        "os.environ",
-        {
-            "CHEDDARWHIZZY_API_KEY": "test_key",
-            "CHEDDARWHIZZY_BASE_URL": "https://api.example.com",
-        },
-    )
-    def test_create_client_from_env_with_custom_url(self):
-        """Test create_client_from_env with custom base URL."""
-        client = create_client_from_env()
-        assert isinstance(client, WhizuraiClient)
-        assert client.api_key == "test_key"
-        assert client.base_url == "https://api.example.com"
+class TestMakeRequest:
+    async def test_success(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(200, {"ok": True}))
+        data = await client._make_request("GET", "/v1/x")
+        assert data == {"ok": True}
+
+    async def test_empty_body(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(204, None))
+        assert await client._make_request("DELETE", "/v1/x") == {}
+
+    async def test_401(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(401))
+        with pytest.raises(AuthenticationError):
+            await client._make_request("GET", "/v1/x")
+
+    async def test_404(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(404))
+        with pytest.raises(NotFoundError):
+            await client._make_request("GET", "/v1/x")
+
+    async def test_429(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(429, headers={"Retry-After": "1"})
+        )
+        with pytest.raises(RateLimitError):
+            await client._make_request("GET", "/v1/x")
+
+    async def test_422(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(422, {"error": {"message": "bad"}})
+        )
+        with pytest.raises(ValidationError):
+            await client._make_request("POST", "/v1/x", data={})
+
+    async def test_400_api_error(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(409, {"message": "conflict"})
+        )
+        with pytest.raises(APIError) as exc:
+            await client._make_request("POST", "/v1/x", data={})
+        assert exc.value.status_code == 409
+
+    async def test_500_retries_then_raises(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(500))
+        with pytest.raises(APIError):
+            await client._make_request("GET", "/v1/x")
+        # initial + max_retries(2) = 3 attempts
+        assert client.client.request.await_count == 3
+
+    async def test_500_then_success(self, client):
+        client.client.request = AsyncMock(
+            side_effect=[fake_response(503), fake_response(200, {"ok": 1})]
+        )
+        assert await client._make_request("GET", "/v1/x") == {"ok": 1}
+
+    async def test_timeout_retries(self, client):
+        client.client.request = AsyncMock(side_effect=TimeoutException("slow"))
+        with pytest.raises(TimeoutError):
+            await client._make_request("GET", "/v1/x")
+
+    async def test_connect_error(self, client):
+        client.client.request = AsyncMock(side_effect=ConnectError("down"))
+        with pytest.raises(NetworkError):
+            await client._make_request("GET", "/v1/x")
+
+
+class TestCapabilities:
+    async def test_list(self, client):
+        client._make_request = AsyncMock(
+            return_value={"capabilities": [{"id": "c1", "slug": "s", "name": "n"}], "total": 1}
+        )
+        resp = await client.capabilities.list(status="published", limit=5)
+        client._make_request.assert_awaited_once()
+        args, kwargs = client._make_request.call_args
+        assert args[1] == "/v1/capabilities"
+        assert kwargs["params"]["status"] == "published"
+        assert resp.capabilities[0].id == "c1"
+
+    async def test_get_unwraps_capability(self, client):
+        client._make_request = AsyncMock(
+            return_value={"capability": {"id": "c1", "slug": "s", "name": "n"}}
+        )
+        cap = await client.capabilities.get("image.generate")
+        assert cap.id == "c1"
+        assert client._make_request.call_args[0][1] == "/v1/capabilities/image.generate"
+
+    async def test_run(self, client):
+        client._make_request = AsyncMock(
+            return_value={"run": {"id": "r1", "status": "pending"}}
+        )
+        run = await client.capabilities.run("c1", {"prompt": "hi"}, idempotency_key="k1")
+        assert isinstance(run, Run)
+        args, kwargs = client._make_request.call_args
+        assert args[1] == "/v1/capabilities/c1/execute"
+        assert kwargs["data"]["idempotencyKey"] == "k1"
+        assert kwargs["headers"]["x-idempotency-key"] == "k1"
+
+    async def test_dry_run_derives_valid(self, client):
+        client._make_request = AsyncMock(return_value={"status": "valid", "estimatedCost": 1})
+        res = await client.capabilities.dry_run("c1", {"a": 1})
+        assert res.valid is True
+
+
+class TestRuns:
+    async def test_get(self, client):
+        client._make_request = AsyncMock(return_value={"id": "r1", "status": "succeeded"})
+        run = await client.runs.get("r1")
+        assert run.status == RunStatus.SUCCEEDED
+        assert client._make_request.call_args[0][1] == "/v1/workflow-runs/r1"
+
+    async def test_list(self, client):
+        client._make_request = AsyncMock(return_value={"runs": [{"id": "r1", "status": "running"}]})
+        resp = await client.runs.list(limit=3)
+        assert resp.runs[0].id == "r1"
+
+    async def test_logs(self, client):
+        client._make_request = AsyncMock(return_value={"logs": [{"message": "hi"}]})
+        logs = await client.runs.logs("r1")
+        assert logs[0].message == "hi"
+
+    async def test_artifacts_flatten(self, client):
+        client._make_request = AsyncMock(
+            return_value={"outputs": [{"id": "a1"}], "inputs": [{"id": "a2"}]}
+        )
+        arts = await client.runs.artifacts("r1")
+        assert [a.id for a in arts] == ["a1", "a2"]
+
+    async def test_poll_until_done(self, client):
+        client.runs.get = AsyncMock(
+            side_effect=[
+                Run(id="r1", status="running"),
+                Run(id="r1", status="succeeded"),
+            ]
+        )
+        run = await client.runs.poll_until_done("r1", interval=0, timeout=5)
+        assert run.status == RunStatus.SUCCEEDED
+
+    async def test_poll_timeout(self, client):
+        client.runs.get = AsyncMock(return_value=Run(id="r1", status="running"))
+        with pytest.raises(TimeoutError):
+            await client.runs.poll_until_done("r1", interval=0, timeout=-1)
+
+
+class TestArtifacts:
+    async def test_list_maps_count(self, client):
+        client._make_request = AsyncMock(return_value={"artifacts": [{"id": "a1"}], "count": 1})
+        resp = await client.artifacts.list(run_id="r1")
+        assert resp.total == 1
+
+    async def test_get(self, client):
+        client._make_request = AsyncMock(return_value={"id": "a1", "type": "image"})
+        art = await client.artifacts.get("a1")
+        assert art.type == "image"
+
+
+class TestTriggers:
+    async def test_list(self, client):
+        client._make_request = AsyncMock(return_value={"triggers": [{"id": "t1", "name": "T", "eventType": "e", "actionType": "a"}], "count": 1})
+        resp = await client.triggers.list()
+        assert resp.count == 1
+
+    async def test_create(self, client):
+        client._make_request = AsyncMock(
+            return_value={"id": "t1", "name": "T", "eventType": "e", "actionType": "a"}
+        )
+        t = await client.triggers.create(
+            name="T", event_type="e", action_type="a", action_config={"capabilityId": "c1"}
+        )
+        assert t.id == "t1"
+        body = client._make_request.call_args.kwargs["data"]
+        assert body["eventType"] == "e"
+
+    async def test_update(self, client):
+        client._make_request = AsyncMock(
+            return_value={"id": "t1", "name": "T", "eventType": "e", "actionType": "a", "enabled": False}
+        )
+        t = await client.triggers.update("t1", enabled=False)
+        assert t.enabled is False
+
+    async def test_delete(self, client):
+        client._make_request = AsyncMock(return_value={"message": "ok"})
+        assert await client.triggers.delete("t1") is None
+
+    async def test_test(self, client):
+        client._make_request = AsyncMock(return_value={"success": True})
+        res = await client.triggers.test("t1", {"artifact": {"id": "x"}})
+        assert res["success"] is True
+
+
+class TestHealth:
+    async def test_health_status_ping(self, client):
+        client._make_request = AsyncMock(
+            side_effect=[
+                {"status": "healthy"},
+                {"status": "operational", "version": "0.2.0"},
+                {"status": "healthy"},
+            ]
+        )
+        assert (await client.health_check()).status == "healthy"
+        assert (await client.get_status()).version == "0.2.0"
+        assert await client.ping() is True
+
+    async def test_ping_false_on_error(self, client):
+        client._make_request = AsyncMock(side_effect=NetworkError("down"))
+        assert await client.ping() is False
