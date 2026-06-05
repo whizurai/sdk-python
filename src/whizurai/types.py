@@ -1,15 +1,23 @@
 """
 Type definitions for the Whizurai Python SDK.
 
-This module contains all the Pydantic models for request/response validation
-and type safety across the SDK.
+The platform's public surface is capability-first: you list/execute
+capabilities, track their runs, and read the resulting artifacts. These
+Pydantic models cover that surface plus client configuration and the typed
+error hierarchy.
+
+Response models allow extra fields (``extra="allow"``) so forward-compatible
+additions from the platform never break deserialization.
 """
 
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+# ─── Client configuration ───────────────────────────────────────────────────
 
 
 class ClientConfig(BaseModel):
@@ -42,399 +50,259 @@ class ClientConfig(BaseModel):
         return v
 
 
-class ContentType(str, Enum):
-    """Content type enumeration."""
-
-    TEXT = "text"
-    IMAGE = "image"
+# ─── Enums ──────────────────────────────────────────────────────────────────
 
 
-class SentimentType(str, Enum):
-    """Sentiment type enumeration."""
+class CapabilityStatus(str, Enum):
+    """Lifecycle status of a capability."""
 
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    NEUTRAL = "neutral"
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    DEPRECATED = "deprecated"
 
 
-class JobStatus(str, Enum):
-    """Job status enumeration."""
+class RunStatus(str, Enum):
+    """Lifecycle status of a capability/workflow run."""
 
     PENDING = "pending"
     RUNNING = "running"
+    SUCCEEDED = "succeeded"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
 
-# AI Services Types
+#: Statuses at which a run is finished and will not change further.
+TERMINAL_RUN_STATUSES = frozenset(
+    {RunStatus.SUCCEEDED, RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+)
 
 
-class GenerateRequest(BaseModel):
-    """Request for content generation."""
-
-    prompt: str = Field(..., description="The prompt for content generation")
-    model: Optional[str] = Field(None, description="Specific model to use")
-    max_tokens: Optional[int] = Field(1000, description="Maximum tokens to generate")
-    temperature: Optional[float] = Field(0.7, description="Temperature for generation")
-    top_p: Optional[float] = Field(None, description="Top-p sampling parameter")
-    frequency_penalty: Optional[float] = Field(None, description="Frequency penalty")
-    presence_penalty: Optional[float] = Field(None, description="Presence penalty")
-    stop: Optional[List[str]] = Field(None, description="Stop sequences")
-    stream: Optional[bool] = Field(False, description="Whether to stream the response")
-
-    @field_validator("temperature")
-    @classmethod
-    def validate_temperature(cls, v):
-        if v is not None and (v < 0 or v > 2):
-            raise ValueError("Temperature must be between 0 and 2")
-        return v
-
-    @field_validator("max_tokens")
-    @classmethod
-    def validate_max_tokens(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Max tokens must be positive")
-        return v
+# ─── Capabilities ───────────────────────────────────────────────────────────
 
 
-class GenerateResponse(BaseModel):
-    """Response from content generation."""
+class Capability(BaseModel):
+    """A productized, executable AI capability."""
 
-    content: str = Field(..., description="Generated content")
-    model: str = Field(..., description="Model used for generation")
-    usage: Dict[str, int] = Field(..., description="Token usage information")
-    finish_reason: Optional[str] = Field(None, description="Reason for completion")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
+    model_config = ConfigDict(extra="allow")
 
-
-class EnrichRequest(BaseModel):
-    """Request for content enrichment."""
-
-    content: str = Field(..., description="Content to enrich")
-    type: ContentType = Field(..., description="Type of content")
-    options: Optional[Dict[str, Any]] = Field(None, description="Additional options")
-    include_summary: Optional[bool] = Field(True, description="Include summary")
-    include_tags: Optional[bool] = Field(True, description="Include tags")
-    include_sentiment: Optional[bool] = Field(
-        True, description="Include sentiment analysis"
+    id: str
+    slug: str
+    name: str
+    status: CapabilityStatus = CapabilityStatus.PUBLISHED
+    version: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    input_contract: Optional[List[Dict[str, Any]]] = Field(
+        default=None, alias="inputContract"
     )
-    include_entities: Optional[bool] = Field(
-        False, description="Include entity extraction"
+    input_schema: Optional[Dict[str, Any]] = Field(default=None, alias="inputSchema")
+    output_schema: Optional[Dict[str, Any]] = Field(default=None, alias="outputSchema")
+
+
+class ListCapabilitiesResponse(BaseModel):
+    """Paginated list of capabilities."""
+
+    model_config = ConfigDict(extra="allow")
+
+    capabilities: List[Capability] = Field(default_factory=list)
+    total: Optional[int] = None
+    next_cursor: Optional[str] = Field(default=None, alias="nextCursor")
+
+
+class DryRunResult(BaseModel):
+    """Result of validating a capability's inputs without executing."""
+
+    model_config = ConfigDict(extra="allow")
+
+    valid: bool = False
+    status: Optional[str] = None
+    resolved_inputs: Optional[Dict[str, Any]] = Field(
+        default=None, alias="resolvedInputs"
     )
-
-
-class EnrichResponse(BaseModel):
-    """Response from content enrichment."""
-
-    tags: List[str] = Field(default_factory=list, description="Extracted tags")
-    summary: Optional[str] = Field(None, description="Content summary")
-    sentiment: Optional[SentimentType] = Field(None, description="Sentiment analysis")
-    confidence: Optional[float] = Field(None, description="Confidence score")
-    entities: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Extracted entities"
+    resolved_artifacts: Optional[Dict[str, Any]] = Field(
+        default=None, alias="resolvedArtifacts"
     )
-    quality_score: Optional[float] = Field(None, description="Content quality score")
-    language: Optional[str] = Field(None, description="Detected language")
-    created_at: Optional[datetime] = Field(None, description="Processing timestamp")
+    estimated_cost: Optional[float] = Field(default=None, alias="estimatedCost")
+    warnings: List[Any] = Field(default_factory=list)
+    errors: List[Any] = Field(default_factory=list)
 
 
-class SearchRequest(BaseModel):
-    """Request for semantic search."""
-
-    query: str = Field(..., description="Search query")
-    limit: Optional[int] = Field(10, description="Maximum number of results")
-    offset: Optional[int] = Field(0, description="Offset for pagination")
-    filters: Optional[Dict[str, Any]] = Field(None, description="Search filters")
-    include_metadata: Optional[bool] = Field(
-        True, description="Include metadata in results"
-    )
-    min_score: Optional[float] = Field(None, description="Minimum similarity score")
-
-    @field_validator("limit")
-    @classmethod
-    def validate_limit(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Limit must be positive")
-        return v
-
-    @field_validator("offset")
-    @classmethod
-    def validate_offset(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("Offset must be non-negative")
-        return v
+# ─── Artifacts ──────────────────────────────────────────────────────────────
 
 
-class SearchResult(BaseModel):
-    """Individual search result."""
+class Artifact(BaseModel):
+    """An artifact produced by a run."""
 
-    id: str = Field(..., description="Result ID")
-    content: str = Field(..., description="Result content")
-    score: float = Field(..., description="Similarity score")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Result metadata"
-    )
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
+    model_config = ConfigDict(extra="allow")
 
-
-class SearchResponse(BaseModel):
-    """Response from semantic search."""
-
-    results: List[SearchResult] = Field(
-        default_factory=list, description="Search results"
-    )
-    total: int = Field(0, description="Total number of results")
-    query: str = Field(..., description="Original query")
-    processing_time: Optional[float] = Field(
-        None, description="Processing time in seconds"
-    )
-    created_at: Optional[datetime] = Field(None, description="Search timestamp")
+    id: str
+    type: Optional[str] = None
+    name: Optional[str] = None
+    filename: Optional[str] = None
+    url: Optional[str] = None
+    preview_url: Optional[str] = Field(default=None, alias="previewUrl")
+    mime_type: Optional[str] = Field(default=None, alias="mimeType")
+    size_bytes: Optional[int] = Field(default=None, alias="sizeBytes")
+    run_id: Optional[str] = Field(default=None, alias="runId")
+    step_id: Optional[str] = Field(default=None, alias="stepId")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
 
 
-class RecommendRequest(BaseModel):
-    """Request for recommendations."""
+class ListArtifactsResponse(BaseModel):
+    """List of artifacts."""
 
-    user_id: str = Field(..., description="User ID for personalization")
-    item_id: Optional[str] = Field(None, description="Reference item ID")
-    limit: Optional[int] = Field(10, description="Maximum number of recommendations")
-    include_reasons: Optional[bool] = Field(
-        True, description="Include recommendation reasons"
-    )
-    filters: Optional[Dict[str, Any]] = Field(
-        None, description="Recommendation filters"
-    )
-    algorithm: Optional[str] = Field(
-        None, description="Recommendation algorithm to use"
-    )
+    model_config = ConfigDict(extra="allow")
 
-    @field_validator("limit")
-    @classmethod
-    def validate_limit(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Limit must be positive")
-        return v
+    artifacts: List[Artifact] = Field(default_factory=list)
+    count: Optional[int] = None
+    total: Optional[int] = None
 
 
-class Recommendation(BaseModel):
-    """Individual recommendation."""
-
-    id: str = Field(..., description="Item ID")
-    score: float = Field(..., description="Recommendation score")
-    reason: Optional[str] = Field(None, description="Reason for recommendation")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Item metadata")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
+# ─── Runs ───────────────────────────────────────────────────────────────────
 
 
-class RecommendResponse(BaseModel):
-    """Response from recommendations."""
+class Run(BaseModel):
+    """A single execution of a capability."""
 
-    recommendations: List[Recommendation] = Field(
-        default_factory=list, description="Recommendations"
-    )
-    user_id: str = Field(..., description="User ID")
-    algorithm: Optional[str] = Field(None, description="Algorithm used")
-    processing_time: Optional[float] = Field(
-        None, description="Processing time in seconds"
-    )
-    created_at: Optional[datetime] = Field(None, description="Recommendation timestamp")
+    model_config = ConfigDict(extra="allow")
 
-
-class ModerateRequest(BaseModel):
-    """Request for content moderation."""
-
-    content: str = Field(..., description="Content to moderate")
-    type: ContentType = Field(..., description="Type of content")
-    include_explanation: Optional[bool] = Field(True, description="Include explanation")
-    include_categories: Optional[bool] = Field(
-        True, description="Include category breakdown"
-    )
-    strict_mode: Optional[bool] = Field(False, description="Use strict moderation")
+    id: str
+    status: RunStatus = RunStatus.PENDING
+    capability_id: Optional[str] = Field(default=None, alias="capabilityId")
+    workflow_run_id: Optional[str] = Field(default=None, alias="workflowRunId")
+    input: Optional[Dict[str, Any]] = None
+    output: Optional[Dict[str, Any]] = None
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = Field(default=None, alias="errorMessage")
+    progress: Optional[float] = None
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    started_at: Optional[datetime] = Field(default=None, alias="startedAt")
+    completed_at: Optional[datetime] = Field(default=None, alias="completedAt")
 
 
-class ModerateResponse(BaseModel):
-    """Response from content moderation."""
+class ExecuteCapabilityResponse(BaseModel):
+    """Wrapper returned by ``POST /v1/capabilities/:id/execute``."""
 
-    safe: bool = Field(..., description="Whether content is safe")
-    confidence: float = Field(..., description="Confidence score")
-    categories: List[str] = Field(
-        default_factory=list, description="Detected categories"
-    )
-    explanation: Optional[str] = Field(None, description="Moderation explanation")
-    severity: Optional[str] = Field(None, description="Severity level")
-    created_at: Optional[datetime] = Field(None, description="Moderation timestamp")
+    model_config = ConfigDict(extra="allow")
+
+    run: Run
 
 
-# File Management Types
+class ListRunsResponse(BaseModel):
+    """List of runs."""
+
+    model_config = ConfigDict(extra="allow")
+
+    runs: List[Run] = Field(default_factory=list)
+    total: Optional[int] = None
+    next_cursor: Optional[str] = Field(default=None, alias="nextCursor")
 
 
-class UploadRequest(BaseModel):
-    """Request for file upload."""
+class RunLogEntry(BaseModel):
+    """A single structured log line for a run."""
 
-    file_path: str = Field(..., description="Path to file to upload")
-    options: Optional[Dict[str, Any]] = Field(None, description="Upload options")
-    generate_variants: Optional[bool] = Field(
-        False, description="Generate image variants"
-    )
-    compress: Optional[bool] = Field(True, description="Compress file")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="File metadata")
+    model_config = ConfigDict(extra="allow")
 
-
-class UploadResponse(BaseModel):
-    """Response from file upload."""
-
-    id: str = Field(..., description="File ID")
-    url: str = Field(..., description="File URL")
-    size: int = Field(..., description="File size in bytes")
-    type: str = Field(..., description="File MIME type")
-    variants: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Generated variants"
-    )
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="File metadata")
-    created_at: Optional[datetime] = Field(None, description="Upload timestamp")
+    level: Optional[str] = None
+    message: str = ""
+    timestamp: Optional[str] = None
+    step_id: Optional[str] = Field(default=None, alias="stepId")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class FileInfo(BaseModel):
-    """File information."""
-
-    id: str = Field(..., description="File ID")
-    url: str = Field(..., description="File URL")
-    size: int = Field(..., description="File size in bytes")
-    type: str = Field(..., description="File MIME type")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="File metadata")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
-    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+# ─── Triggers ───────────────────────────────────────────────────────────────
 
 
-# Job Management Types
+class Trigger(BaseModel):
+    """An event-driven automation that executes a capability."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+    enabled: bool = True
+    event_type: str = Field(alias="eventType")
+    action_type: str = Field(alias="actionType")
+    action_config: Dict[str, Any] = Field(default_factory=dict, alias="actionConfig")
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    app_id: Optional[str] = Field(default=None, alias="appId")
+    description: Optional[str] = None
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
 
-class JobInfo(BaseModel):
-    """Job information."""
+class ListTriggersResponse(BaseModel):
+    """List of triggers."""
 
-    id: str = Field(..., description="Job ID")
-    status: JobStatus = Field(..., description="Job status")
-    type: str = Field(..., description="Job type")
-    progress: Optional[float] = Field(None, description="Job progress (0-100)")
-    result: Optional[Dict[str, Any]] = Field(None, description="Job result")
-    error: Optional[str] = Field(None, description="Error message if failed")
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
-    started_at: Optional[datetime] = Field(None, description="Start timestamp")
-    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
+    model_config = ConfigDict(extra="allow")
+
+    triggers: List[Trigger] = Field(default_factory=list)
+    count: int = 0
 
 
-class UsageStats(BaseModel):
-    """Usage statistics."""
-
-    total_requests: int = Field(0, description="Total API requests")
-    total_tokens: int = Field(0, description="Total tokens used")
-    total_cost: float = Field(0.0, description="Total cost in USD")
-    requests_by_endpoint: Dict[str, int] = Field(
-        default_factory=dict, description="Requests by endpoint"
-    )
-    tokens_by_model: Dict[str, int] = Field(
-        default_factory=dict, description="Tokens by model"
-    )
-    period_start: Optional[datetime] = Field(None, description="Period start")
-    period_end: Optional[datetime] = Field(None, description="Period end")
-
-
-# Model Management Types
-
-
-class ModelInfo(BaseModel):
-    """Model information."""
-
-    id: str = Field(..., description="Model ID")
-    name: str = Field(..., description="Model name")
-    provider: str = Field(..., description="Model provider")
-    type: str = Field(..., description="Model type")
-    capabilities: List[str] = Field(
-        default_factory=list, description="Model capabilities"
-    )
-    cost_per_token: Optional[float] = Field(None, description="Cost per token")
-    max_tokens: Optional[int] = Field(None, description="Maximum tokens")
-    available: bool = Field(True, description="Whether model is available")
-
-
-class RouteRequest(BaseModel):
-    """Request for model routing."""
-
-    prompt: str = Field(..., description="Prompt for routing")
-    type: str = Field(..., description="Request type")
-    preferences: Optional[Dict[str, Any]] = Field(
-        None, description="Routing preferences"
-    )
-    cost_limit: Optional[float] = Field(None, description="Cost limit")
-    quality_requirement: Optional[str] = Field(None, description="Quality requirement")
-
-
-class RouteResponse(BaseModel):
-    """Response from model routing."""
-
-    model: str = Field(..., description="Selected model")
-    provider: str = Field(..., description="Model provider")
-    reason: str = Field(..., description="Selection reason")
-    estimated_cost: Optional[float] = Field(None, description="Estimated cost")
-    confidence: Optional[float] = Field(None, description="Selection confidence")
-
-
-# Health and Status Types
+# ─── Health and status ──────────────────────────────────────────────────────
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    """Gateway health check response."""
 
-    status: str = Field(..., description="Overall status")
-    timestamp: datetime = Field(..., description="Check timestamp")
-    uptime: float = Field(..., description="Uptime in seconds")
-    version: str = Field(..., description="API version")
-    services: Dict[str, str] = Field(
-        default_factory=dict, description="Service statuses"
-    )
-    memory_usage: Optional[Dict[str, Any]] = Field(None, description="Memory usage")
-    cpu_usage: Optional[float] = Field(None, description="CPU usage percentage")
+    model_config = ConfigDict(extra="allow")
+
+    status: str
+    timestamp: Optional[datetime] = None
+    uptime: Optional[float] = None
+    version: Optional[str] = None
+    checks: Dict[str, Any] = Field(default_factory=dict)
 
 
 class StatusResponse(BaseModel):
-    """API status response."""
+    """Lightweight platform status response."""
 
-    status: str = Field(..., description="API status")
-    version: str = Field(..., description="API version")
-    timestamp: datetime = Field(..., description="Status timestamp")
-    features: List[str] = Field(default_factory=list, description="Available features")
-    limits: Dict[str, Any] = Field(default_factory=dict, description="Rate limits")
+    model_config = ConfigDict(extra="allow")
+
+    status: str
+    version: str
+    timestamp: Optional[datetime] = None
 
 
-# Error Types
+# ─── Error hierarchy ────────────────────────────────────────────────────────
 
 
 class WhizuraiError(Exception):
-    """Base exception for Whizurai SDK."""
+    """Base exception for the Whizurai SDK."""
 
     pass
 
 
 class AuthenticationError(WhizuraiError):
-    """Authentication error."""
+    """Authentication or authorization failure (401/403)."""
+
+    pass
+
+
+class NotFoundError(WhizuraiError):
+    """Requested resource was not found (404)."""
 
     pass
 
 
 class RateLimitError(WhizuraiError):
-    """Rate limit exceeded error."""
+    """Rate limit exceeded (429)."""
 
     pass
 
 
 class ValidationError(WhizuraiError):
-    """Request validation error."""
+    """Request validation error (400/422)."""
 
     pass
 
 
 class APIError(WhizuraiError):
-    """General API error."""
+    """General API error carrying status code and response body."""
 
     def __init__(
         self,

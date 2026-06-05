@@ -1,83 +1,105 @@
 """
 Whizurai Python SDK
 
-Unified API client for the Whizurai Platform providing easy access
-to all platform services and capabilities.
+Capability-first async client for the Whizurai Platform. Execute published
+capabilities, track their runs, read the resulting artifacts, and manage
+event-driven triggers.
 
-This SDK provides comprehensive access to:
-- AI content generation and enrichment
-- Semantic search and recommendations
-- Content moderation and safety
-- File upload and management
-- Job tracking and monitoring
-- Model management and routing
-- Health monitoring and status
+Example::
+
+    import asyncio
+    from whizurai import WhizuraiClient, ClientConfig
+
+    async def main():
+        async with WhizuraiClient(ClientConfig(api_key="sk_live_...")) as client:
+            run = await client.capabilities.run("image.generate", {"prompt": "a red bike"})
+            done = await client.runs.poll_until_done(run.id)
+            artifacts = await client.runs.artifacts(done.id)
+
+    asyncio.run(main())
 
 Features:
 - Full async/await support
-- Comprehensive type safety with Pydantic
-- Automatic retry logic with exponential backoff
-- Detailed error handling and validation
-- Request/response logging and monitoring
-- Context manager support for resource cleanup
+- Pydantic-typed requests/responses
+- Automatic retry with exponential backoff
+- Typed error hierarchy and context-manager cleanup
 """
 
-from .client import WhizuraiClient, create_client, create_client_from_env
-from .types import (  # Configuration; AI Services; File Management; Job Management; Model Management; Health and Status; Enums; Error Types
-    APIError, AuthenticationError, WhizuraiError, ClientConfig, ContentType, EnrichRequest,
-    EnrichResponse, FileInfo, GenerateRequest, GenerateResponse,
-    HealthResponse, JobInfo, JobStatus, ModelInfo, ModerateRequest,
-    ModerateResponse, NetworkError, RateLimitError, Recommendation,
-    RecommendRequest, RecommendResponse, RouteRequest, RouteResponse,
-    SearchRequest, SearchResponse, SearchResult, SentimentType, StatusResponse,
-    TimeoutError, UploadRequest, UploadResponse, UsageStats, ValidationError)
+from .client import (
+    ArtifactsResource,
+    CapabilitiesResource,
+    RunsResource,
+    TriggersResource,
+    WhizuraiClient,
+    create_client,
+    create_client_from_env,
+)
+from .types import (
+    APIError,
+    Artifact,
+    AuthenticationError,
+    Capability,
+    CapabilityStatus,
+    ClientConfig,
+    DryRunResult,
+    ExecuteCapabilityResponse,
+    HealthResponse,
+    ListArtifactsResponse,
+    ListCapabilitiesResponse,
+    ListRunsResponse,
+    ListTriggersResponse,
+    NetworkError,
+    NotFoundError,
+    RateLimitError,
+    Run,
+    RunLogEntry,
+    RunStatus,
+    StatusResponse,
+    TimeoutError,
+    Trigger,
+    ValidationError,
+    WhizuraiError,
+)
 
-__version__ = "0.2.0"
+__version__ = "2.0.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
-    # Client classes and factories
+    # Client + resources
     "WhizuraiClient",
+    "CapabilitiesResource",
+    "RunsResource",
+    "ArtifactsResource",
+    "TriggersResource",
     "create_client",
     "create_client_from_env",
     # Configuration
     "ClientConfig",
-    # AI Services
-    "GenerateRequest",
-    "GenerateResponse",
-    "EnrichRequest",
-    "EnrichResponse",
-    "SearchRequest",
-    "SearchResponse",
-    "SearchResult",
-    "RecommendRequest",
-    "RecommendResponse",
-    "Recommendation",
-    "ModerateRequest",
-    "ModerateResponse",
-    # File Management
-    "UploadRequest",
-    "UploadResponse",
-    "FileInfo",
-    # Job Management
-    "JobInfo",
-    "JobStatus",
-    # Usage
-    "UsageStats",
-    # Model Management
-    "ModelInfo",
-    "RouteRequest",
-    "RouteResponse",
-    # Health and Status
+    # Capabilities
+    "Capability",
+    "CapabilityStatus",
+    "ListCapabilitiesResponse",
+    "DryRunResult",
+    # Runs
+    "Run",
+    "RunStatus",
+    "ListRunsResponse",
+    "RunLogEntry",
+    "ExecuteCapabilityResponse",
+    # Artifacts
+    "Artifact",
+    "ListArtifactsResponse",
+    # Triggers
+    "Trigger",
+    "ListTriggersResponse",
+    # Health and status
     "HealthResponse",
     "StatusResponse",
-    # Enums
-    "ContentType",
-    "SentimentType",
-    # Error Types
+    # Errors
     "WhizuraiError",
     "AuthenticationError",
+    "NotFoundError",
     "RateLimitError",
     "ValidationError",
     "APIError",
