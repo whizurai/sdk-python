@@ -164,6 +164,87 @@ class ListArtifactsResponse(BaseModel):
 # ─── Runs ───────────────────────────────────────────────────────────────────
 
 
+# ─── Run presentation ───────────────────────────────────────────────────────
+
+
+class PresentedOutput(BaseModel):
+    """One presentable value from a run's result.
+
+    ``semantic_type`` is intentionally a plain string, not an enum: an
+    unrecognised value must degrade gracefully rather than fail validation.
+    Known values: text, markdown, object, collection, image, video, audio,
+    file, unknown.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    key: str
+    label: str
+    semantic_type: str = Field(alias="semanticType")
+    value: Optional[Any] = None
+    truncated: Optional[bool] = None
+    href: Optional[str] = None
+    mime_type: Optional[str] = Field(default=None, alias="mimeType")
+    size_bytes: Optional[int] = Field(default=None, alias="sizeBytes")
+    artifact_id: Optional[str] = Field(default=None, alias="artifactId")
+    item_type: Optional[str] = Field(default=None, alias="itemType")
+    item_count: Optional[int] = Field(default=None, alias="itemCount")
+    items: Optional[List["PresentedOutput"]] = None
+    schema_: Optional[Dict[str, Any]] = Field(default=None, alias="schema")
+
+
+class PresentedInput(BaseModel):
+    """An input echoed alongside the result that it produced."""
+
+    model_config = ConfigDict(extra="allow")
+
+    key: str
+    label: str
+    semantic_type: Optional[str] = Field(default=None, alias="semanticType")
+    value: Optional[Any] = None
+    href: Optional[str] = None
+    mime_type: Optional[str] = Field(default=None, alias="mimeType")
+
+
+class PresentedAction(BaseModel):
+    """An affordance for a result.
+
+    ``id`` is one of copy | download | open | play | view_raw | save_as_asset |
+    reuse, or ``continuation`` for a capability that can consume this result.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    label: str
+    output_key: Optional[str] = Field(default=None, alias="outputKey")
+    primary: Optional[bool] = None
+    capability_slug: Optional[str] = Field(default=None, alias="capabilitySlug")
+
+
+class RunPresentation(BaseModel):
+    """Derived read model for a run's result.
+
+    Present only when the platform has the feature enabled and the run
+    succeeded. Never persisted; recomputed per request from the run's canonical
+    ``result`` plus its capability's output declarations.
+
+    ``source`` is the honesty field: ``declared`` means the values came from the
+    workflow's declared outputs; ``inferred`` means a compatibility adapter
+    reconstructed them for a run predating the canonical-result contract.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    contract_version: int = Field(alias="contractVersion")
+    source: str
+    primary: Optional[PresentedOutput] = None
+    secondary: List[PresentedOutput] = Field(default_factory=list)
+    debug: List[PresentedOutput] = Field(default_factory=list)
+    inputs: List[PresentedInput] = Field(default_factory=list)
+    actions: List[PresentedAction] = Field(default_factory=list)
+
+
 class Run(BaseModel):
     """A single execution of a capability."""
 
@@ -176,6 +257,7 @@ class Run(BaseModel):
     input: Optional[Dict[str, Any]] = None
     output: Optional[Dict[str, Any]] = None
     result: Optional[Dict[str, Any]] = None
+    presentation: Optional[RunPresentation] = None
     error_message: Optional[str] = Field(default=None, alias="errorMessage")
     progress: Optional[float] = None
     created_at: Optional[datetime] = Field(default=None, alias="createdAt")
