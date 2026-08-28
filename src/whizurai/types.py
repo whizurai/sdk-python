@@ -238,6 +238,11 @@ class RunPresentation(BaseModel):
 
     contract_version: int = Field(alias="contractVersion")
     source: str
+    #: The run's customer-facing name, taken verbatim from the capability's
+    #: ``name``. ``None`` when the run has no capability — a workflow-only run
+    #: has no human name anywhere, and formatting ``workflow_slug`` would
+    #: substitute a guess for a fact. Fall back to the slug instead.
+    title: Optional[str] = None
     primary: Optional[PresentedOutput] = None
     secondary: List[PresentedOutput] = Field(default_factory=list)
     debug: List[PresentedOutput] = Field(default_factory=list)
