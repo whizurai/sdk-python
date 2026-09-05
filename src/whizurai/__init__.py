@@ -35,6 +35,12 @@ from .client import (
     create_client_from_env,
 )
 from .types import (
+    VIDEO_MULTI_SHOT,
+    SubjectReference,
+    VideoMultiShotInput,
+    VideoMultiShotOutput,
+    VideoShot,
+    total_duration_seconds,
     APIError,
     Artifact,
     AuthenticationError,
@@ -66,6 +72,12 @@ __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
+    "VIDEO_MULTI_SHOT",
+    "SubjectReference",
+    "VideoMultiShotInput",
+    "VideoMultiShotOutput",
+    "VideoShot",
+    "total_duration_seconds",
     # Client + resources
     "WhizuraiClient",
     "CapabilitiesResource",
