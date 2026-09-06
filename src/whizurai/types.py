@@ -412,3 +412,102 @@ class TimeoutError(WhizuraiError):
     """Request timeout error."""
 
     pass
+
+
+# ─── video:multi-shot@v1 ────────────────────────────────────────────────────
+#
+# One continuous video generated from an ordered list of shots, optionally
+# holding named subjects consistent across every shot. It is not several clips
+# stitched together, and it is billed as one task.
+#
+# These models are provider-neutral. Nothing here names a model or a provider's
+# field vocabulary — a caller that writes provider reference syntax into a shot
+# prompt has leaked the provider into product code, and will break the first
+# time routing picks a different one.
+
+#: Capability slug, for ``client.capabilities.run(...)``.
+VIDEO_MULTI_SHOT = "video:multi-shot"
+
+
+class VideoShot(BaseModel):
+    """One shot of a multi-shot generation.
+
+    List order IS shot order, all the way to the provider. Nothing re-sorts it.
+    """
+
+    prompt: str = Field(
+        ...,
+        description=(
+            "What happens in this shot. May address a registered subject by its "
+            "bare token (e.g. 'hero_pet'); the platform applies provider syntax."
+        ),
+    )
+    duration_seconds: float = Field(
+        ..., alias="durationSeconds", description="Length of this shot in seconds"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class SubjectReference(BaseModel):
+    """A named subject whose identity must survive the whole generation."""
+
+    token: str = Field(
+        ..., description="How shot prompts address this subject, e.g. 'hero_pet'"
+    )
+    description: Optional[str] = Field(
+        default=None, description="Short factual description of the subject"
+    )
+    image_urls: List[str] = Field(
+        ...,
+        alias="imageUrls",
+        description=(
+            "Images establishing this subject's appearance. The routed model "
+            "declares how many it needs (Kling 3.0 requires 2-4) and the platform "
+            "refuses an out-of-range set before the task is billed."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VideoMultiShotInput(BaseModel):
+    """Input for ``video:multi-shot@v1``."""
+
+    start_image_url: Optional[str] = Field(
+        default=None,
+        alias="startImageUrl",
+        description="The frame the sequence opens on",
+    )
+    shots: List[VideoShot] = Field(
+        ..., description="Ordered shots; the routed model declares the maximum"
+    )
+    subject_references: Optional[List[SubjectReference]] = Field(
+        default=None,
+        alias="subjectReferences",
+        description="Named subjects to keep consistent across shots",
+    )
+    aspect_ratio: Optional[str] = Field(default=None, alias="aspectRatio")
+    resolution: Optional[str] = Field(default=None)
+    audio: Optional[bool] = Field(
+        default=None, description="Generate audio with the video; defaults to false"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VideoMultiShotOutput(BaseModel):
+    """Output of ``video:multi-shot@v1``."""
+
+    video: str = Field(..., description="The single sequenced video")
+
+    model_config = ConfigDict(extra="allow")
+
+
+def total_duration_seconds(shots: List[VideoShot]) -> float:
+    """Seconds the request will bill for: the sum of the shot durations.
+
+    Providers bill per second of generated output, so this is the number that
+    decides cost — not the shot count.
+    """
+    return sum(shot.duration_seconds for shot in shots)
