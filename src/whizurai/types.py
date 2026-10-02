@@ -34,6 +34,15 @@ class ClientConfig(BaseModel):
     retry_delay: float = Field(
         default=1.0, description="Delay between retries in seconds"
     )
+    inference_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base URL of model-router, which serves POST /v1/embeddings and "
+            "POST /v1/rerank (e.g. https://model-router.staging.whizur.ai). The "
+            "gateway at base_url does not serve them. Required for embed()/rerank(); "
+            "create_client_from_env() reads WHIZAI_INFERENCE_URL."
+        ),
+    )
 
     @field_validator("timeout")
     @classmethod
@@ -511,3 +520,169 @@ def total_duration_seconds(shots: List[VideoShot]) -> float:
     decides cost — not the shot count.
     """
     return sum(shot.duration_seconds for shot in shots)
+
+
+# ─── Direct inference: embeddings + rerank ──────────────────────────────────
+#
+# Wire shapes for ``POST /v1/embeddings`` and ``POST /v1/rerank``; field names
+# match the wire (snake_case) and mirror ``@whizurai/types/inference``.
+#
+# Provenance (``whizai``) is optional everywhere: older, non-fleet embedding
+# models (e.g. ``nomic-embed-text``) answer without it. Treat a missing
+# ``embedding_space`` as "comparable with nothing", never as a wildcard.
+
+#: Pinned alias for the recommended fleet embedding model.
+RECOMMENDED_EMBEDDING_MODEL = "embedding-qwen3-0.6b-v1"
+#: Pinned alias for the recommended fleet rerank model.
+RECOMMENDED_RERANK_MODEL = "rerank-qwen3-0.6b-v1"
+#: Maximum inputs per ``POST /v1/embeddings`` call.
+EMBEDDINGS_MAX_INPUTS = 128
+#: Maximum documents per ``POST /v1/rerank`` call.
+RERANK_MAX_DOCUMENTS = 64
+
+
+class InferenceWorker(BaseModel):
+    """The worker that executed a request, when attributable."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str
+
+
+class InferenceProvenance(BaseModel):
+    """Execution attribution shared by embeddings and rerank responses."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    provider: Optional[str] = None
+    runtime: Optional[str] = None
+    execution: Optional[str] = None
+    worker: Optional[InferenceWorker] = None
+    model: Optional[str] = None
+    model_revision: Optional[str] = None
+    prompt_contract: Optional[str] = None
+    #: ``False`` when the gateway could not establish which worker/model served it.
+    attributable: Optional[bool] = None
+
+
+class EmbeddingProvenance(InferenceProvenance):
+    """Embedding provenance; ``embedding_space`` identifies the vector space."""
+
+    dimensions: Optional[int] = None
+    normalized: Optional[bool] = None
+    #: ``model:revision:dimensions:normalization:prompt_contract``. Vectors are
+    #: comparable only when these strings are identical.
+    embedding_space: Optional[str] = None
+
+
+class EmbeddingData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    object: str = "embedding"
+    index: int
+    embedding: List[float]
+
+
+class EmbeddingsResponse(BaseModel):
+    """Response of ``POST /v1/embeddings``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    object: str = "list"
+    data: List[EmbeddingData]
+    model: str
+    usage: Optional[Dict[str, Any]] = None
+    whizai: Optional[EmbeddingProvenance] = None
+
+    @property
+    def embedding_space(self) -> Optional[str]:
+        """Shortcut for ``whizai.embedding_space`` (``None`` when absent)."""
+        return self.whizai.embedding_space if self.whizai else None
+
+
+class RerankResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    index: int
+    #: ``None`` only in a degraded (fallback) response.
+    relevance_score: Optional[float] = None
+
+
+class RerankResponse(BaseModel):
+    """Response of ``POST /v1/rerank``, or a degraded fallback.
+
+    ``degraded`` is ``True`` only when ``fallback="original-order"`` was used
+    and the reranker was unavailable; then ``results`` are in original order
+    with ``relevance_score=None`` and ``reason``/``error`` explain why.
+    """
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+    id: Optional[str] = None
+    model: str
+    results: List[RerankResult]
+    usage: Optional[Dict[str, Any]] = None
+    whizai: Optional[InferenceProvenance] = None
+    degraded: bool = False
+    #: ``timeout``, ``network_error`` or ``http_<status>`` when degraded.
+    reason: Optional[str] = None
+    #: The underlying exception when degraded (excluded from serialization).
+    error: Optional[Exception] = Field(default=None, exclude=True)
+
+
+class EmbeddingSpaceError(WhizuraiError):
+    """Two embedding spaces differ, or one is missing/not fully attributed."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
+def embedding_space_of(source: Any) -> Optional[str]:
+    """Extract ``embedding_space`` from a string, provenance, response or dict."""
+    if source is None:
+        return None
+    if isinstance(source, str):
+        return source
+    if isinstance(source, EmbeddingsResponse):
+        return source.embedding_space
+    if isinstance(source, EmbeddingProvenance):
+        return source.embedding_space
+    if isinstance(source, dict):
+        if "whizai" in source:
+            whizai = source.get("whizai") or {}
+            return whizai.get("embedding_space") if isinstance(whizai, dict) else None
+        return source.get("embedding_space")
+    return None
+
+
+def _known_space(space: Optional[str], label: str) -> str:
+    if not isinstance(space, str) or not space.strip():
+        raise EmbeddingSpaceError(
+            f"Embedding space {label} is missing; refusing to compare vectors of unknown origin.",
+            "EMBEDDING_SPACE_UNKNOWN",
+        )
+    if "unknown" in space.lower():
+        raise EmbeddingSpaceError(
+            f"Embedding space {label} is not fully attributed ({space}); refusing to compare.",
+            "EMBEDDING_SPACE_UNKNOWN",
+        )
+    return space
+
+
+def assert_same_embedding_space(a: Any, b: Any) -> str:
+    """Raise :class:`EmbeddingSpaceError` unless ``a`` and ``b`` name the same,
+    fully-known embedding space. Returns the shared space string.
+
+    Never compare vectors across ``embedding_space`` values.
+    """
+    left = _known_space(embedding_space_of(a), "A")
+    right = _known_space(embedding_space_of(b), "B")
+    if left != right:
+        raise EmbeddingSpaceError(
+            f"Embedding spaces differ: {left!r} vs {right!r}. "
+            "Vectors from different spaces are not comparable.",
+            "EMBEDDING_SPACE_MISMATCH",
+        )
+    return left

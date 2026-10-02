@@ -35,6 +35,20 @@ from .client import (
     create_client_from_env,
 )
 from .types import (
+    EMBEDDINGS_MAX_INPUTS,
+    RECOMMENDED_EMBEDDING_MODEL,
+    RECOMMENDED_RERANK_MODEL,
+    RERANK_MAX_DOCUMENTS,
+    EmbeddingData,
+    EmbeddingProvenance,
+    EmbeddingSpaceError,
+    EmbeddingsResponse,
+    InferenceProvenance,
+    InferenceWorker,
+    RerankResponse,
+    RerankResult,
+    assert_same_embedding_space,
+    embedding_space_of,
     VIDEO_MULTI_SHOT,
     SubjectReference,
     VideoMultiShotInput,
@@ -67,11 +81,26 @@ from .types import (
     WhizuraiError,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
+    # Embeddings + rerank
+    "EMBEDDINGS_MAX_INPUTS",
+    "RECOMMENDED_EMBEDDING_MODEL",
+    "RECOMMENDED_RERANK_MODEL",
+    "RERANK_MAX_DOCUMENTS",
+    "EmbeddingData",
+    "EmbeddingProvenance",
+    "EmbeddingSpaceError",
+    "EmbeddingsResponse",
+    "InferenceProvenance",
+    "InferenceWorker",
+    "RerankResponse",
+    "RerankResult",
+    "assert_same_embedding_space",
+    "embedding_space_of",
     "VIDEO_MULTI_SHOT",
     "SubjectReference",
     "VideoMultiShotInput",
