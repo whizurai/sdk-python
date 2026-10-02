@@ -62,10 +62,28 @@ direct-inference methods `client.embed()` / `client.rerank()` below.
 Direct inference against `POST /v1/embeddings` and `POST /v1/rerank`. Field
 names match the wire (snake_case), including the optional `whizai` provenance.
 
+These endpoints are served by **model-router**, not the api-gateway at
+`base_url`, so set `inference_base_url` (or env `WHIZAI_INFERENCE_URL` with
+`create_client_from_env()`). The same API key authenticates there (sent as
+`X-API-Key` and `Authorization: Bearer`; model-router verifies it with the
+gateway). Without it, `embed()`/`rerank()` raise `WhizuraiError`.
+
+```python
+client = WhizuraiClient(ClientConfig(
+    api_key=os.environ["WHIZURAI_API_KEY"],
+    inference_base_url="https://model-router.staging.whizur.ai",
+))
+```
+
 ### Embed
 
 `model` is **required** — there is no default, because the model fixes the
 vector space. Use a pinned alias such as `embedding-qwen3-0.6b-v1`.
+
+**Set `input_type` correctly.** Retrieval queries must pass `input_type="query"`;
+passages being indexed use `"document"` (the default). Qwen3-Embedding applies
+its retrieval instruction only to query inputs — a query embedded as a document
+gets no instruction and retrieves worse, with no error.
 
 ```python
 res = await client.embed(
@@ -124,7 +142,14 @@ if out.degraded:
 ```
 
 Validation and auth errors (400, 401, 403, 404, 422) **always raise**, even in
-fallback mode — they are caller bugs, not outages.
+fallback mode — they are caller bugs, not outages. A 401/403/404 message ends
+with `(check inference_base_url: …)`, since pointing at the wrong host (e.g.
+the gateway) produces exactly those. A missing `inference_base_url` also raises
+in fallback mode.
+
+Error messages are read from any body shape the platform returns:
+`{"error": {"code", "message"}}`, `{"error", "message"}`, or FastAPI's
+`{"detail": ...}` (string, `{"error", "message"}` object, or validation list).
 
 ## Error Handling
 

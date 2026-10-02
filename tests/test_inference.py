@@ -8,6 +8,9 @@ from httpx import ConnectError, TimeoutException
 from whizurai import (
     AuthenticationError,
     ClientConfig,
+    NotFoundError,
+    WhizuraiError,
+    create_client_from_env,
     EmbeddingSpaceError,
     RECOMMENDED_EMBEDDING_MODEL,
     ValidationError,
@@ -36,7 +39,12 @@ def fake_response(status_code=200, json_data=None):
 def client():
     return WhizuraiClient(
         ClientConfig(
-            api_key="k", base_url="http://localhost:3000", timeout=5.0, max_retries=2, retry_delay=0.0
+            api_key="k",
+            base_url="http://localhost:3000",
+            inference_base_url="http://model-router.test/",
+            timeout=5.0,
+            max_retries=2,
+            retry_delay=0.0,
         )
     )
 
@@ -70,7 +78,7 @@ class TestEmbed:
             RECOMMENDED_EMBEDDING_MODEL, ["hello"], input_type="query", instruction="find"
         )
         kwargs = client.client.request.call_args.kwargs
-        assert kwargs["url"] == "/v1/embeddings"
+        assert kwargs["url"] == "http://model-router.test/v1/embeddings"
         assert kwargs["json"] == {
             "model": "embedding-qwen3-0.6b-v1",
             "input": ["hello"],
@@ -114,6 +122,7 @@ class TestRerank:
             )
         )
         res = await client.rerank("rerank-qwen3-0.6b-v1", "q", DOCS, top_n=2)
+        assert client.client.request.call_args.kwargs["url"] == "http://model-router.test/v1/rerank"
         assert client.client.request.call_args.kwargs["json"] == {
             "model": "rerank-qwen3-0.6b-v1",
             "query": "q",
@@ -195,3 +204,53 @@ class TestEmbeddingSpaceGuard:
         assert exc.value.code == "EMBEDDING_SPACE_UNKNOWN"
         with pytest.raises(EmbeddingSpaceError):
             assert_same_embedding_space(bad, SPACE)
+
+
+class TestInferenceHost:
+    async def test_missing_inference_base_url_raises_even_with_fallback(self):
+        c = WhizuraiClient(ClientConfig(api_key="k", base_url="http://localhost:3000"))
+        c.client.request = AsyncMock()
+        with pytest.raises(WhizuraiError, match="inference_base_url"):
+            await c.embed("m", "x")
+        with pytest.raises(WhizuraiError, match="inference_base_url"):
+            await c.rerank("m", "q", DOCS, fallback="original-order")
+        c.client.request.assert_not_called()
+
+    async def test_sends_api_key_headers(self, client):
+        assert client.client.headers["X-API-Key"] == "k"
+        assert client.client.headers["Authorization"] == "Bearer k"
+
+    @pytest.mark.parametrize("status,exc", [(401, AuthenticationError), (404, NotFoundError)])
+    async def test_wrong_host_raises_with_hint_even_with_fallback(self, client, status, exc):
+        client.client.request = AsyncMock(return_value=fake_response(status, {"detail": "Not Found"}))
+        with pytest.raises(exc, match=r"check inference_base_url: http://model-router\.test"):
+            await client.rerank("m", "q", DOCS, fallback="original-order")
+
+    def test_from_env(self, monkeypatch):
+        monkeypatch.setenv("WHIZURAI_API_KEY", "k")
+        monkeypatch.setenv("WHIZAI_INFERENCE_URL", "http://mr.env")
+        assert create_client_from_env().inference_base_url == "http://mr.env"
+
+
+class TestErrorBodyParsing:
+    @pytest.mark.parametrize(
+        "body,expected",
+        [
+            ({"error": {"code": "no_worker_claimed", "message": "no worker"}}, "no worker"),
+            ({"detail": {"error": "no_worker_claimed", "message": "no worker"}}, "no worker"),
+            ({"detail": "Model not allowed"}, "Model not allowed"),
+            ({"detail": [{"loc": ["body", "documents"], "msg": "too long"}]}, "body.documents: too long"),
+            ({"error": "invalid_request", "message": "bad"}, "bad"),
+            ({"error": "plain sentence"}, "plain sentence"),
+            ({}, "fallback"),
+        ],
+    )
+    def test_parse(self, body, expected):
+        assert WhizuraiClient._error_message(body, "fallback") == expected
+
+    async def test_server_message_survives_on_400(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(400, {"detail": {"error": "input_rejected", "message": "too many docs"}})
+        )
+        with pytest.raises(ValidationError, match="too many docs"):
+            await client.rerank("m", "q", DOCS)

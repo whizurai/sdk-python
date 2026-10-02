@@ -34,6 +34,15 @@ class ClientConfig(BaseModel):
     retry_delay: float = Field(
         default=1.0, description="Delay between retries in seconds"
     )
+    inference_base_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base URL of model-router, which serves POST /v1/embeddings and "
+            "POST /v1/rerank (e.g. https://model-router.staging.whizur.ai). The "
+            "gateway at base_url does not serve them. Required for embed()/rerank(); "
+            "create_client_from_env() reads WHIZAI_INFERENCE_URL."
+        ),
+    )
 
     @field_validator("timeout")
     @classmethod
@@ -553,6 +562,8 @@ class InferenceProvenance(BaseModel):
     model: Optional[str] = None
     model_revision: Optional[str] = None
     prompt_contract: Optional[str] = None
+    #: ``False`` when the gateway could not establish which worker/model served it.
+    attributable: Optional[bool] = None
 
 
 class EmbeddingProvenance(InferenceProvenance):
@@ -563,7 +574,6 @@ class EmbeddingProvenance(InferenceProvenance):
     #: ``model:revision:dimensions:normalization:prompt_contract``. Vectors are
     #: comparable only when these strings are identical.
     embedding_space: Optional[str] = None
-    attributable: Optional[bool] = None
 
 
 class EmbeddingData(BaseModel):

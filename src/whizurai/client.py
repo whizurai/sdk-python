@@ -67,6 +67,9 @@ class WhizuraiClient:
         self.timeout = config.timeout
         self.max_retries = config.max_retries
         self.retry_delay = config.retry_delay
+        self.inference_base_url = (
+            config.inference_base_url.rstrip("/") if config.inference_base_url else None
+        )
 
         # The gateway accepts either header; send both so the same client works
         # for API-key auth regardless of which the deployment prefers.
@@ -213,15 +216,68 @@ class WhizuraiClient:
             return {}
 
     @staticmethod
-    def _error_message(error_data: Dict[str, Any], fallback: str) -> str:
+    def _error_message(error_data: Any, fallback: str) -> str:
+        """Server message from any platform error body.
+
+        Handles ``{"error": {"code", "message"}}``, ``{"error": "...", "message"}``,
+        ``{"message"}`` and FastAPI's ``{"detail": "..."}``,
+        ``{"detail": {"error", "message"}}`` and ``{"detail": [{"loc", "msg"}]}``.
+        """
+        if isinstance(error_data, str):
+            return error_data or fallback
+        if not isinstance(error_data, dict):
+            return fallback
         error = error_data.get("error")
-        if isinstance(error, dict):
-            return error.get("message") or error_data.get("message") or fallback
-        if isinstance(error, str):
+        if isinstance(error, dict) and error.get("message"):
+            return error["message"]
+        if error_data.get("message"):
+            return error_data["message"]
+        detail = error_data.get("detail")
+        if isinstance(detail, str) and detail:
+            return detail
+        if isinstance(detail, dict):
+            nested = detail.get("error")
+            if detail.get("message"):
+                return detail["message"]
+            if isinstance(nested, dict) and nested.get("message"):
+                return nested["message"]
+            if isinstance(nested, str) and nested:
+                return nested
+        if isinstance(detail, list):
+            parts = []
+            for item in detail:
+                if isinstance(item, dict) and (item.get("msg") or item.get("message")):
+                    loc = item.get("loc")
+                    msg = item.get("msg") or item.get("message")
+                    parts.append(f"{'.'.join(str(x) for x in loc)}: {msg}" if loc else msg)
+            if parts:
+                return "; ".join(parts)
+        if isinstance(error, str) and error:
             return error
-        return error_data.get("message") or fallback
+        return fallback
 
     # ─── Direct inference: embeddings + rerank ─────────────────────────────
+
+    def _inference_url(self, path: str) -> str:
+        """Absolute model-router URL; embed/rerank are not served by the gateway."""
+        if not self.inference_base_url:
+            raise WhizuraiError(
+                "embed()/rerank() require inference_base_url (the model-router URL, e.g. "
+                "'https://model-router.staging.whizur.ai'; env WHIZAI_INFERENCE_URL with "
+                "create_client_from_env). The gateway base_url does not serve "
+                "/v1/embeddings or /v1/rerank."
+            )
+        return f"{self.inference_base_url}{path}"
+
+    async def _inference_request(self, path: str, body: Dict[str, Any], **kwargs: Any) -> Any:
+        """POST to model-router. 401/403/404 there usually mean a wrong host."""
+        url = self._inference_url(path)
+        try:
+            return await self._make_request("POST", url, data=body, **kwargs)
+        except (AuthenticationError, NotFoundError) as exc:
+            raise type(exc)(
+                f"{exc} (check inference_base_url: {self.inference_base_url})"
+            ) from exc
 
     @staticmethod
     def _require_model(model: Any, method: str) -> str:
@@ -243,7 +299,9 @@ class WhizuraiClient:
 
         ``model`` is required — there is no default, because the model fixes
         the vector space. ``input_type`` is ``"query"`` or ``"document"``
-        (server default ``"document"``). The response carries
+        (server default ``"document"``) — retrieval queries MUST pass
+        ``"query"``: Qwen3-Embedding applies its instruction only to queries.
+        Served by model-router: requires ``inference_base_url``. The response carries
         ``whizai.embedding_space``; never compare vectors across spaces (see
         :func:`assert_same_embedding_space`).
         """
@@ -255,7 +313,7 @@ class WhizuraiClient:
             body["input_type"] = input_type
         if instruction:
             body["instruction"] = instruction
-        data = await self._make_request("POST", "/v1/embeddings", data=body)
+        data = await self._inference_request("/v1/embeddings", body)
         return EmbeddingsResponse(**data)
 
     async def rerank(
@@ -274,7 +332,10 @@ class WhizuraiClient:
         network error, 408, 429 or 5xx: it returns ``degraded=True`` with the
         documents in their original order (``relevance_score=None``,
         truncated to ``top_n``) and makes a single attempt (no retries) so
-        ``timeout`` (seconds) bounds the call. Other 4xx errors always raise.
+        ``timeout`` (seconds) bounds the call. Other 4xx errors always raise
+        (401/403/404 messages name ``inference_base_url``).
+
+        Served by model-router: requires ``inference_base_url``.
         """
         if fallback not in (None, "original-order"):
             raise ValueError("fallback must be None or 'original-order'")
@@ -288,11 +349,12 @@ class WhizuraiClient:
         if instruction:
             body["instruction"] = instruction
 
+        # A missing inference_base_url is a config bug: raise even in fallback mode.
+        self._inference_url("/v1/rerank")
         try:
-            data = await self._make_request(
-                "POST",
+            data = await self._inference_request(
                 "/v1/rerank",
-                data=body,
+                body,
                 timeout=timeout,
                 retries=0 if fallback else None,
             )
@@ -624,7 +686,8 @@ def create_client_from_env() -> WhizuraiClient:
     """
     Create a client using environment variables.
 
-    Reads ``WHIZURAI_API_KEY`` (required) and ``WHIZURAI_BASE_URL`` (optional).
+    Reads ``WHIZURAI_API_KEY`` (required), ``WHIZURAI_BASE_URL`` (optional) and
+    ``WHIZAI_INFERENCE_URL`` (optional; model-router URL for embed/rerank).
     """
     import os
 
@@ -637,4 +700,7 @@ def create_client_from_env() -> WhizuraiClient:
         raise ValueError("WHIZURAI_API_KEY environment variable is required")
 
     base_url = os.getenv("WHIZURAI_BASE_URL", "https://api.whizurai.com")
-    return create_client(ClientConfig(api_key=api_key, base_url=base_url))
+    inference_base_url = os.getenv("WHIZAI_INFERENCE_URL") or None
+    return create_client(
+        ClientConfig(api_key=api_key, base_url=base_url, inference_base_url=inference_base_url)
+    )
