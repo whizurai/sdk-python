@@ -9,7 +9,7 @@ the platform's public REST surface (``/v1/capabilities/:id/execute``,
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from httpx import ConnectError, HTTPError, TimeoutException
@@ -21,6 +21,7 @@ from .types import (
     Capability,
     ClientConfig,
     DryRunResult,
+    EmbeddingsResponse,
     ExecuteCapabilityResponse,
     HealthResponse,
     ListArtifactsResponse,
@@ -30,6 +31,8 @@ from .types import (
     NetworkError,
     NotFoundError,
     RateLimitError,
+    RerankResponse,
+    RerankResult,
     Run,
     RunLogEntry,
     RunStatus,
@@ -43,7 +46,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.0.0"
+SDK_VERSION = "2.1.0"
 
 
 class WhizuraiClient:
@@ -107,6 +110,7 @@ class WhizuraiClient:
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         retries: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Any:
         """
         Make an HTTP request with retry logic and typed error handling.
@@ -128,7 +132,7 @@ class WhizuraiClient:
                     params={k: v for k, v in (params or {}).items() if v is not None}
                     or None,
                     headers=headers,
-                    timeout=self.timeout,
+                    timeout=timeout if timeout is not None else self.timeout,
                 )
 
                 if 200 <= response.status_code < 300:
@@ -217,6 +221,98 @@ class WhizuraiClient:
             return error
         return error_data.get("message") or fallback
 
+    # ─── Direct inference: embeddings + rerank ─────────────────────────────
+
+    @staticmethod
+    def _require_model(model: Any, method: str) -> str:
+        if not isinstance(model, str) or not model.strip():
+            raise ValidationError(
+                f"{method} requires an explicit model (e.g. 'embedding-qwen3-0.6b-v1'). "
+                "There is no default: the vector space must be a deliberate choice."
+            )
+        return model
+
+    async def embed(
+        self,
+        model: str,
+        input: Union[str, List[str]],
+        input_type: Optional[str] = None,
+        instruction: Optional[str] = None,
+    ) -> EmbeddingsResponse:
+        """Embed text (``POST /v1/embeddings``).
+
+        ``model`` is required — there is no default, because the model fixes
+        the vector space. ``input_type`` is ``"query"`` or ``"document"``
+        (server default ``"document"``). The response carries
+        ``whizai.embedding_space``; never compare vectors across spaces (see
+        :func:`assert_same_embedding_space`).
+        """
+        body: Dict[str, Any] = {
+            "model": self._require_model(model, "embed()"),
+            "input": input,
+        }
+        if input_type:
+            body["input_type"] = input_type
+        if instruction:
+            body["instruction"] = instruction
+        data = await self._make_request("POST", "/v1/embeddings", data=body)
+        return EmbeddingsResponse(**data)
+
+    async def rerank(
+        self,
+        model: str,
+        query: str,
+        documents: List[str],
+        top_n: Optional[int] = None,
+        instruction: Optional[str] = None,
+        fallback: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> RerankResponse:
+        """Rerank ``documents`` against ``query`` (``POST /v1/rerank``).
+
+        With ``fallback="original-order"`` this never raises on timeout,
+        network error, 408, 429 or 5xx: it returns ``degraded=True`` with the
+        documents in their original order (``relevance_score=None``,
+        truncated to ``top_n``) and makes a single attempt (no retries) so
+        ``timeout`` (seconds) bounds the call. Other 4xx errors always raise.
+        """
+        if fallback not in (None, "original-order"):
+            raise ValueError("fallback must be None or 'original-order'")
+        body: Dict[str, Any] = {
+            "model": self._require_model(model, "rerank()"),
+            "query": query,
+            "documents": documents,
+        }
+        if top_n is not None:
+            body["top_n"] = top_n
+        if instruction:
+            body["instruction"] = instruction
+
+        try:
+            data = await self._make_request(
+                "POST",
+                "/v1/rerank",
+                data=body,
+                timeout=timeout,
+                retries=0 if fallback else None,
+            )
+        except WhizuraiError as exc:
+            reason = _rerank_degrade_reason(exc) if fallback else None
+            if reason is None:
+                raise
+            n = len(documents or [])
+            if top_n is not None and top_n >= 0:
+                n = min(n, top_n)
+            logger.warning("rerank degraded to original order: %s (%s)", reason, exc)
+            return RerankResponse(
+                model=model,
+                results=[RerankResult(index=i, relevance_score=None) for i in range(n)],
+                degraded=True,
+                reason=reason,
+                error=exc,
+            )
+        return RerankResponse(**data)
+
     # ─── Health / status ────────────────────────────────────────────────────
 
     async def health_check(self) -> HealthResponse:
@@ -236,6 +332,24 @@ class WhizuraiClient:
             return True
         except Exception:  # noqa: BLE001
             return False
+
+
+def _rerank_degrade_reason(exc: Exception) -> Optional[str]:
+    """Reason string if a rerank failure may degrade, else ``None`` (raise)."""
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, NetworkError):
+        return "network_error"
+    if isinstance(exc, RateLimitError):
+        return "http_429"
+    if isinstance(exc, APIError):
+        status = exc.status_code
+        if status is None:
+            return "network_error"
+        if status >= 500 or status == 408:
+            return f"http_{status}"
+    # ValidationError / AuthenticationError / NotFoundError / other 4xx: caller bugs.
+    return None
 
 
 class CapabilitiesResource:
