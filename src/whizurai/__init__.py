@@ -81,7 +81,7 @@ from .types import (
     WhizuraiError,
 )
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 

@@ -1,13 +1,17 @@
-# CheddarWhizzy Python SDK Dependencies
+# Whizurai Python SDK runtime dependencies.
+#
+# Compatible ranges, never exact pins: these become the wheel's install_requires,
+# and an exact pin in a library makes it impossible to install beside any
+# application that needs a different patch release (e.g. httpx>=0.27).
 
 # HTTP client
-httpx==0.25.2
+httpx>=0.25,<1
 
 # Data validation and serialization
-pydantic==2.5.0
+pydantic>=2.5,<3
 
 # Utilities
-python-dotenv==1.0.0
+python-dotenv>=1.0,<2
 
 # Development dependencies (installed with pip install -e .[dev])
 # pytest>=7.4.0
