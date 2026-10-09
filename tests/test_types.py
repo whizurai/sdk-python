@@ -125,3 +125,46 @@ class TestMisc:
         assert h.status == "healthy"
         s = StatusResponse(status="operational", version="0.2.0")
         assert s.version == "0.2.0"
+
+
+class TestSpeechSynthesize:
+    def test_slug_and_wire_names(self):
+        from whizurai import SPEECH_SYNTHESIZE, SpeechSynthesizeInput
+
+        assert SPEECH_SYNTHESIZE == "speech:synthesize"
+        body = SpeechSynthesizeInput(
+            text="hi", engine="chatterbox", referenceAudioArtifactId="a1", cfg_weight=0.5
+        ).model_dump(by_alias=True, exclude_none=True)
+        assert body == {
+            "text": "hi",
+            "engine": "chatterbox",
+            "referenceAudioArtifactId": "a1",
+            "cfgWeight": 0.5,
+        }
+
+    def test_input_rejects_unknown_and_out_of_range(self):
+        import pytest
+        from pydantic import ValidationError as PydanticValidationError
+        from whizurai import SpeechSynthesizeInput
+
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="x", engine="kokoro", exagerration=1)
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="x", engine="kokoro", speed=3)
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="x", engine="kokoro", priority="interactive")
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="", engine="kokoro")
+
+    def test_result_parses(self):
+        from whizurai import SpeechSynthesizeResult
+
+        r = SpeechSynthesizeResult(
+            url="https://s/a.wav", storageKey="k", contentType="audio/wav",
+            sizeBytes=10, sha256="0" * 64, durationMs=1000, sampleRate=24000,
+            channels=1, bitDepth=16, servedEngine="kokoro", servedVoice="af_heart",
+            servedModel="kokoro-82m", modelRevision=None, runtime="tts",
+            deviceObserved=None, watermark=None, seedApplied=None,
+            attributable=False, jobId="j", inputChars=2, wallMs=None, warnings=[],
+        )
+        assert r.sample_rate == 24000 and r.attributable is False

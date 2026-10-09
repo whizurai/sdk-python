@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.0
+
+### Added
+
+- Typed `speech:synthesize` shapes: `SPEECH_SYNTHESIZE`, `SpeechSynthesizeInput`,
+  `SpeechSynthesizeResult`, `SpeechWarning`, `SpeechEngine`, `SpeechPriority`.
+  No new endpoint: run it with `client.capabilities.run(SPEECH_SYNTHESIZE, ...)`
+  and serialize the input with `model_dump(by_alias=True, exclude_none=True)`.
+  The capability is flag-gated on the platform and ships as draft.
+- `client.capabilities.cancel(run_id)` for the existing
+  `POST /v1/capabilities/capability-runs/:runId/cancel`. It marks the run and
+  cancels its workflow run best-effort; stopping work already on a worker is a
+  platform follow-up.
+- `client.artifacts.download(artifact_id)` returning the artifact's bytes.
+  Credentials go to the gateway only: an absolute URL on another origin, and any
+  redirect off the gateway, is fetched without `Authorization` or `X-API-Key`.
+
 ## 2.1.1
 
 ### Fixed

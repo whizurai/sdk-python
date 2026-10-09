@@ -49,6 +49,12 @@ from .types import (
     RerankResult,
     assert_same_embedding_space,
     embedding_space_of,
+    SPEECH_SYNTHESIZE,
+    SpeechEngine,
+    SpeechPriority,
+    SpeechSynthesizeInput,
+    SpeechSynthesizeResult,
+    SpeechWarning,
     VIDEO_MULTI_SHOT,
     SubjectReference,
     VideoMultiShotInput,
@@ -81,7 +87,7 @@ from .types import (
     WhizuraiError,
 )
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -101,6 +107,12 @@ __all__ = [
     "RerankResult",
     "assert_same_embedding_space",
     "embedding_space_of",
+    "SPEECH_SYNTHESIZE",
+    "SpeechEngine",
+    "SpeechPriority",
+    "SpeechSynthesizeInput",
+    "SpeechSynthesizeResult",
+    "SpeechWarning",
     "VIDEO_MULTI_SHOT",
     "SubjectReference",
     "VideoMultiShotInput",

@@ -9,6 +9,7 @@ the platform's public REST surface (``/v1/capabilities/:id/execute``,
 
 import asyncio
 import logging
+from urllib.parse import urljoin, urlsplit
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
@@ -46,7 +47,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.1.1"
+SDK_VERSION = "2.2.0"
 
 
 class WhizuraiClient:
@@ -479,6 +480,20 @@ class CapabilitiesResource:
         )
         return ExecuteCapabilityResponse(**data).run
 
+    async def cancel(self, run_id: str) -> Run:
+        """Cancel a capability run.
+
+        Calls ``POST /v1/capabilities/capability-runs/:runId/cancel``; idempotent
+        for an already-cancelled run. ``run_id`` is the id returned by
+        :meth:`run`. This marks the run and cancels its workflow run
+        best-effort; it does not yet stop work already handed to a worker
+        (platform follow-up).
+        """
+        data = await self._client._make_request(
+            "POST", f"/v1/capabilities/capability-runs/{run_id}/cancel"
+        )
+        return Run(**data)
+
     async def dry_run(
         self, id_or_slug: str, input: Optional[Dict[str, Any]] = None
     ) -> DryRunResult:
@@ -603,6 +618,58 @@ class ArtifactsResource:
             "GET", f"/v1/artifacts/{artifact_id}"
         )
         return Artifact(**data)
+
+    async def download(self, artifact_id: str) -> bytes:
+        """Download an artifact's bytes via its resolved URL.
+
+        Credentials go to the gateway only. A relative URL, or an absolute URL on
+        the gateway's own origin, is fetched with the authenticated client. An
+        absolute URL on any other origin (object storage, a CDN) is fetched with
+        a bare client that sends no ``Authorization`` or ``X-API-Key``: the URL is
+        itself the bearer capability. A redirect off the gateway is followed
+        without credentials too.
+        """
+        artifact = await self.get(artifact_id)
+        url = artifact.url or (artifact.metadata or {}).get("url")
+        if not url:
+            raise WhizuraiError(f"Artifact {artifact_id} has no downloadable URL")
+        return await self._fetch_bytes(url)
+
+    async def _fetch_bytes(self, url: str) -> bytes:
+        client = self._client
+        gateway = urlsplit(client.base_url)
+        for _ in range(6):
+            target = urlsplit(url)
+            same_origin = not target.netloc or (
+                (target.scheme, target.netloc) == (gateway.scheme, gateway.netloc)
+            )
+            if same_origin:
+                response = await client.client.get(
+                    url, follow_redirects=False, timeout=client.timeout
+                )
+            else:
+                async with httpx.AsyncClient(timeout=client.timeout) as bare:
+                    response = await bare.get(url, follow_redirects=False)
+            if response.status_code in (301, 302, 303, 307, 308):
+                location = response.headers.get("location")
+                if not location:
+                    raise APIError(
+                        "Artifact download redirect had no Location",
+                        status_code=response.status_code,
+                    )
+                url = urljoin(f"{client.base_url}/", urljoin(url, location))
+                continue
+            if 200 <= response.status_code < 300:
+                return response.content
+            if response.status_code in (401, 403):
+                raise AuthenticationError("Artifact download was refused")
+            if response.status_code == 404:
+                raise NotFoundError("Artifact content not found")
+            raise APIError(
+                f"Artifact download failed with {response.status_code}",
+                status_code=response.status_code,
+            )
+        raise APIError("Artifact download followed too many redirects")
 
 
 class TriggersResource:
