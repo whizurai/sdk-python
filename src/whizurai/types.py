@@ -12,7 +12,7 @@ additions from the platform never break deserialization.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -520,6 +520,125 @@ def total_duration_seconds(shots: List[VideoShot]) -> float:
     decides cost — not the shot count.
     """
     return sum(shot.duration_seconds for shot in shots)
+
+
+# ─── speech:synthesize ───────────────────────────────────────────────────────
+#
+# Text to speech on the local fleet. Asynchronous: ``capabilities.run`` returns
+# a run and the audio is an artifact. No new endpoint. The capability is
+# flag-gated on the platform (``ENABLE_SPEECH_SYNTHESIS``) and ships as draft.
+# Shapes are flat and camelCase on the wire; the platform rejects unknown
+# fields, so serialize with ``model_dump(by_alias=True, exclude_none=True)``.
+
+#: Capability slug, for ``client.capabilities.run(...)``.
+SPEECH_SYNTHESIZE = "speech:synthesize"
+
+SpeechEngine = Literal["kokoro", "chatterbox"]
+
+#: ``interactive`` is deliberately absent: a call over this capability is never
+#: one a person is waiting on inside a request.
+SpeechPriority = Literal["production", "batch", "backfill"]
+
+
+class SpeechSynthesizeInput(BaseModel):
+    """Input for ``speech:synthesize@v1``."""
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description=(
+            "Plain UTF-8 text, no SSML. Each engine has a tighter cap (see the "
+            "capability's experienceMeta); over the cap is refused, never truncated."
+        ),
+    )
+    engine: SpeechEngine
+    voice: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="kokoro: REQUIRED preset id, e.g. 'af_heart'. chatterbox: not accepted.",
+    )
+    reference_audio_artifact_id: Optional[str] = Field(
+        default=None,
+        alias="referenceAudioArtifactId",
+        min_length=1,
+        max_length=64,
+        description=(
+            "chatterbox: optional reference voice, an artifact owned by the calling "
+            "app. kokoro: not accepted."
+        ),
+    )
+    speed: Optional[float] = Field(
+        default=None, ge=0.5, le=2, description="kokoro only"
+    )
+    exaggeration: Optional[float] = Field(
+        default=None, ge=0.25, le=2, description="chatterbox only"
+    )
+    cfg_weight: Optional[float] = Field(
+        default=None, alias="cfgWeight", ge=0, le=1, description="chatterbox only"
+    )
+    seed: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=2_147_483_647,
+        description="Best effort; the result reports seedApplied",
+    )
+    priority: Optional[SpeechPriority] = Field(
+        default=None, description="Fleet class; the platform default is 'batch'"
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
+class SpeechWarning(BaseModel):
+    """A non-fatal note on a successful synthesis. Never changes success."""
+
+    code: str
+    message: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class SpeechSynthesizeResult(BaseModel):
+    """Output of ``speech:synthesize@v1`` (the audio artifact's metadata).
+
+    Everything under "what actually served" comes from the executing worker,
+    never from the request or the alias. There is no worker name and no echo of
+    the text.
+    """
+
+    url: str = Field(
+        ..., description="Storage URL; a bearer capability, do not forward credentials"
+    )
+    storage_key: str = Field(..., alias="storageKey")
+    content_type: Literal["audio/wav"] = Field(..., alias="contentType")
+    size_bytes: int = Field(..., alias="sizeBytes")
+    sha256: str
+
+    duration_ms: int = Field(..., alias="durationMs")
+    sample_rate: int = Field(
+        ..., alias="sampleRate", description="Reported, not promised: read it"
+    )
+    channels: Literal[1]
+    bit_depth: Literal[16] = Field(..., alias="bitDepth")
+
+    served_engine: SpeechEngine = Field(..., alias="servedEngine")
+    served_voice: str = Field(..., alias="servedVoice")
+    served_model: str = Field(..., alias="servedModel")
+    model_revision: Optional[str] = Field(default=None, alias="modelRevision")
+    runtime: str
+    device_observed: Optional[str] = Field(default=None, alias="deviceObserved")
+    watermark: Optional[Literal["perth"]] = None
+    seed_applied: Optional[int] = Field(default=None, alias="seedApplied")
+    attributable: bool
+
+    job_id: str = Field(..., alias="jobId")
+    input_chars: int = Field(..., alias="inputChars")
+    wall_ms: Optional[int] = Field(default=None, alias="wallMs")
+    warnings: List[SpeechWarning] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 # ─── Direct inference: embeddings + rerank ──────────────────────────────────
