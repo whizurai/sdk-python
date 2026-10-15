@@ -39,6 +39,10 @@ from .types import (
     RECOMMENDED_EMBEDDING_MODEL,
     RECOMMENDED_RERANK_MODEL,
     RERANK_MAX_DOCUMENTS,
+    AudioTranscriptionResponse,
+    TranscriptionPendingError,
+    TranscriptionResponseFormat,
+    TranscriptionSegment,
     EmbeddingData,
     EmbeddingProvenance,
     EmbeddingSpaceError,
@@ -87,11 +91,15 @@ from .types import (
     WhizuraiError,
 )
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
+    "AudioTranscriptionResponse",
+    "TranscriptionPendingError",
+    "TranscriptionResponseFormat",
+    "TranscriptionSegment",
     # Embeddings + rerank
     "EMBEDDINGS_MAX_INPUTS",
     "RECOMMENDED_EMBEDDING_MODEL",

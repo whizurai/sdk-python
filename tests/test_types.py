@@ -168,3 +168,52 @@ class TestSpeechSynthesize:
             attributable=False, jobId="j", inputChars=2, wallMs=None, warnings=[],
         )
         assert r.sample_rate == 24000 and r.attributable is False
+
+    def test_qwen3_tts_input_wire_names(self):
+        from whizurai import SpeechSynthesizeInput
+
+        body = SpeechSynthesizeInput(
+            text="Chapter one.",
+            engine="qwen3-tts",
+            reference_audio_artifact_id="art-ref",
+            reference_text="The exact words spoken in the reference.",
+            seed=7,
+        ).model_dump(by_alias=True, exclude_none=True)
+        assert body == {
+            "text": "Chapter one.",
+            "engine": "qwen3-tts",
+            "referenceAudioArtifactId": "art-ref",
+            "referenceText": "The exact words spoken in the reference.",
+            "seed": 7,
+        }
+
+    def test_reference_text_bounds(self):
+        import pytest
+        from pydantic import ValidationError as PydanticValidationError
+        from whizurai import SpeechSynthesizeInput
+
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="x", engine="qwen3-tts", referenceText="")
+        with pytest.raises(PydanticValidationError):
+            SpeechSynthesizeInput(text="x", engine="qwen3-tts", referenceText="a" * 2001)
+
+    def test_result_reference_hashes(self):
+        from whizurai import SpeechSynthesizeResult
+
+        base = dict(
+            url="https://s/a.wav", storageKey="k", contentType="audio/wav",
+            sizeBytes=10, sha256="0" * 64, durationMs=1000, sampleRate=24000,
+            channels=1, bitDepth=16, servedVoice="reference",
+            modelRevision="qwen-tts==0.1.1", runtime="tts", deviceObserved="mps",
+            watermark=None, seedApplied=None, attributable=True, jobId="j",
+            inputChars=2, wallMs=None, warnings=[],
+        )
+        r = SpeechSynthesizeResult(
+            **base, servedEngine="qwen3-tts", servedModel="qwen3-tts-1.7b-base",
+            referenceAudioSha256="a" * 64, referenceTextSha256="b" * 64,
+        )
+        assert r.served_engine == "qwen3-tts" and r.watermark is None
+        assert r.reference_audio_sha256 == "a" * 64 and r.reference_text_sha256 == "b" * 64
+        # An older worker reports neither: they parse as None.
+        old = SpeechSynthesizeResult(**base, servedEngine="kokoro", servedModel="kokoro-82m")
+        assert old.reference_audio_sha256 is None and old.reference_text_sha256 is None

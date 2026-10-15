@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+
+- `speech:synthesize` third engine `qwen3-tts` (Qwen3-TTS 1.7B Base, voice
+  cloning). `SpeechEngine` gains `"qwen3-tts"`; `SpeechSynthesizeInput` gains
+  `reference_text` (wire `referenceText`, 1-2000 chars). For `qwen3-tts`,
+  `reference_audio_artifact_id` and `reference_text` are required and `voice`,
+  `speed`, `exaggeration`, `cfg_weight` are refused; `reference_text` is refused
+  for the other engines. The platform enforces this (400 `invalid_option`).
+- `SpeechSynthesizeResult` gains `reference_audio_sha256` and
+  `reference_text_sha256` (`Optional[str]`, default `None` so older results
+  still parse). Never `None` for `qwen3-tts`.
+- `client.transcribe(...)` for model-router's `POST /v1/audio/transcriptions`
+  (needs `inference_base_url`), returning `AudioTranscriptionResponse`
+  (`text`, `language`, `duration`, `segments`, `provider`, `model`,
+  `request_id`). A `202` pending answer raises `TranscriptionPendingError`.
+  New exports: `AudioTranscriptionResponse`, `TranscriptionSegment`,
+  `TranscriptionResponseFormat`, `TranscriptionPendingError`.
+
 ## 2.2.0
 
 ### Added

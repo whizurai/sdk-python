@@ -254,3 +254,83 @@ class TestErrorBodyParsing:
         )
         with pytest.raises(ValidationError, match="too many docs"):
             await client.rerank("m", "q", DOCS)
+
+
+TRANSCRIPTION = {
+    "text": "Hello from the narrator.",
+    "language": "en",
+    "duration": 2.4,
+    "segments": None,
+    "provider": "vllm",
+    "model": "whisper-large-v3-turbo",
+    "request_id": "req-t1",
+}
+
+
+class TestTranscribe:
+    async def test_posts_snake_case_body_and_parses(self, client):
+        client.client.request = AsyncMock(return_value=fake_response(200, TRANSCRIPTION))
+        res = await client.transcribe(
+            file_url="https://storage.example.net/a.wav?sig=x",
+            language="en",
+            response_format="json",
+            model="whisper-large-v3-turbo",
+        )
+        kwargs = client.client.request.call_args.kwargs
+        assert kwargs["url"] == "http://model-router.test/v1/audio/transcriptions"
+        assert kwargs["json"] == {
+            "file_url": "https://storage.example.net/a.wav?sig=x",
+            "language": "en",
+            "response_format": "json",
+            "model": "whisper-large-v3-turbo",
+        }
+        assert kwargs["headers"] is None
+        assert res.text == "Hello from the narrator."
+        assert res.model == "whisper-large-v3-turbo" and res.provider == "vllm"
+
+    async def test_headers_metadata_and_segments(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(
+                200,
+                {**TRANSCRIPTION, "segments": [{"text": "Hello", "start": 0.0, "end": 1.2, "confidence": 0.74}]},
+            )
+        )
+        res = await client.transcribe(
+            file="UklGRg==",
+            metadata={"priority": "production"},
+            execution_policy="fleet-required",
+            priority="production",
+            timeout=60.0,
+        )
+        kwargs = client.client.request.call_args.kwargs
+        assert kwargs["json"] == {"file": "UklGRg==", "metadata": {"priority": "production"}}
+        assert kwargs["headers"] == {
+            "x-execution-policy": "fleet-required",
+            "x-priority": "production",
+            "x-request-timeout-ms": "60000",
+        }
+        assert kwargs["timeout"] == 60.0
+        assert res.segments[0].end == 1.2
+
+    async def test_requires_exactly_one_source(self, client):
+        client.client.request = AsyncMock()
+        with pytest.raises(ValidationError):
+            await client.transcribe()
+        with pytest.raises(ValidationError):
+            await client.transcribe(file_url="https://x/a.wav", artifact_id="a1")
+        client.client.request.assert_not_called()
+
+    async def test_pending_202_raises(self, client):
+        from whizurai import TranscriptionPendingError
+
+        client.client.request = AsyncMock(
+            return_value=fake_response(202, {"jobId": "job-9", "state": "queued"})
+        )
+        with pytest.raises(TranscriptionPendingError) as info:
+            await client.transcribe(artifact_id="a1", metadata={"idempotencyKey": "k1"})
+        assert info.value.job_id == "job-9" and info.value.state == "queued"
+
+    async def test_requires_inference_base_url(self):
+        c = WhizuraiClient(ClientConfig(api_key="k", base_url="http://localhost:3000"))
+        with pytest.raises(WhizuraiError, match="inference_base_url"):
+            await c.transcribe(file_url="https://x/a.wav")

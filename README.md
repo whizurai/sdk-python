@@ -55,7 +55,40 @@ asyncio.run(main())
 | `client.triggers` | `list`, `get`, `create`, `update`, `delete`, `test` |
 
 Plus `client.health_check()`, `client.get_status()`, `client.ping()`, and the
-direct-inference methods `client.embed()` / `client.rerank()` below.
+direct-inference methods `client.embed()` / `client.rerank()` /
+`client.transcribe()` below.
+
+## Speech synthesis
+
+`speech:synthesize` is a capability: run it with `client.capabilities.run` and
+serialize the typed input with `model_dump(by_alias=True, exclude_none=True)`.
+
+| Engine | Voice | Engine-only options | Watermark |
+|---|---|---|---|
+| `kokoro` | `voice` preset (required) | `speed` | `None` |
+| `chatterbox` | default, or `reference_audio_artifact_id` | `exaggeration`, `cfg_weight` | `perth` |
+| `qwen3-tts` | `reference_audio_artifact_id` **and** `reference_text` (both required) | none | `None` |
+
+`seed` and `priority` are accepted for every engine. The platform refuses an
+option an engine does not take (400 `invalid_option`); the SDK checks field
+ranges only, not per-engine rules.
+
+```python
+from whizurai import SPEECH_SYNTHESIZE, SpeechSynthesizeInput
+
+body = SpeechSynthesizeInput(
+    text="Chapter one.",
+    engine="qwen3-tts",
+    reference_audio_artifact_id=ref_artifact_id,
+    reference_text="The exact words spoken in the reference recording.",
+    priority="production",
+).model_dump(by_alias=True, exclude_none=True)
+run = await client.capabilities.run(SPEECH_SYNTHESIZE, body)
+```
+
+`SpeechSynthesizeResult.reference_audio_sha256` / `reference_text_sha256` are
+what the worker actually conditioned on (`None` when no reference was used;
+never `None` for `qwen3-tts`).
 
 ## Embeddings and Rerank
 
@@ -66,7 +99,7 @@ These endpoints are served by **model-router**, not the api-gateway at
 `base_url`, so set `inference_base_url` (or env `WHIZAI_INFERENCE_URL` with
 `create_client_from_env()`). The same API key authenticates there (sent as
 `X-API-Key` and `Authorization: Bearer`; model-router verifies it with the
-gateway). Without it, `embed()`/`rerank()` raise `WhizuraiError`.
+gateway). Without it, `embed()`/`rerank()`/`transcribe()` raise `WhizuraiError`.
 
 ```python
 client = WhizuraiClient(ClientConfig(
@@ -150,6 +183,38 @@ in fallback mode.
 Error messages are read from any body shape the platform returns:
 `{"error": {"code", "message"}}`, `{"error", "message"}`, or FastAPI's
 `{"detail": ...}` (string, `{"error", "message"}` object, or validation list).
+
+### Transcription
+
+`client.transcribe(...)` calls model-router's `POST /v1/audio/transcriptions`.
+Give exactly one of `file_url`, `file` (base64) or `artifact_id`; otherwise it
+raises `ValidationError`.
+
+```python
+res = await client.transcribe(
+    file_url=url,
+    language="en",
+    response_format="json",
+    model="whisper-large-v3-turbo",
+    priority="production",
+    timeout=120.0,
+)
+res.text      # full transcript
+res.model     # model that served it
+res.provider  # provider that served it, e.g. "vllm"
+```
+
+- Keyword arguments are already the wire names (`file_url`, `response_format`,
+  `timestamp_granularities`, `metadata`, …); unset ones are not sent. The
+  server's default `response_format` is `verbose_json` (with `segments`).
+- `execution_policy` and `priority` are sent as `x-execution-policy` /
+  `x-priority`; `timeout` (seconds) also goes out as `x-request-timeout-ms` so
+  the router drops the job when you stop waiting.
+- With `metadata={"idempotencyKey": ...}` a transcription still running after
+  the router's wait answers `202`; `transcribe()` raises
+  `TranscriptionPendingError` (`job_id`, `state`). Re-send the same request to
+  re-attach.
+- Attribution is `provider` and `model` only.
 
 ## Error Handling
 

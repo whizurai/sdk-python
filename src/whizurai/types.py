@@ -533,7 +533,9 @@ def total_duration_seconds(shots: List[VideoShot]) -> float:
 #: Capability slug, for ``client.capabilities.run(...)``.
 SPEECH_SYNTHESIZE = "speech:synthesize"
 
-SpeechEngine = Literal["kokoro", "chatterbox"]
+#: ``qwen3-tts`` (Qwen3-TTS 1.7B Base) clones a voice from a reference
+#: recording plus its exact transcript; it has no preset voices.
+SpeechEngine = Literal["kokoro", "chatterbox", "qwen3-tts"]
 
 #: ``interactive`` is deliberately absent: a call over this capability is never
 #: one a person is waiting on inside a request.
@@ -557,7 +559,10 @@ class SpeechSynthesizeInput(BaseModel):
         default=None,
         min_length=1,
         max_length=64,
-        description="kokoro: REQUIRED preset id, e.g. 'af_heart'. chatterbox: not accepted.",
+        description=(
+            "kokoro: REQUIRED preset id, e.g. 'af_heart'. chatterbox, qwen3-tts: "
+            "not accepted."
+        ),
     )
     reference_audio_artifact_id: Optional[str] = Field(
         default=None,
@@ -565,18 +570,28 @@ class SpeechSynthesizeInput(BaseModel):
         min_length=1,
         max_length=64,
         description=(
-            "chatterbox: optional reference voice, an artifact owned by the calling "
-            "app. kokoro: not accepted."
+            "Reference voice, an artifact owned by the calling app. chatterbox: "
+            "optional. qwen3-tts: REQUIRED. kokoro: not accepted."
+        ),
+    )
+    reference_text: Optional[str] = Field(
+        default=None,
+        alias="referenceText",
+        min_length=1,
+        max_length=2000,
+        description=(
+            "qwen3-tts: REQUIRED. The exact transcript of the reference recording "
+            "(NFC-normalised by the platform). kokoro, chatterbox: not accepted."
         ),
     )
     speed: Optional[float] = Field(
-        default=None, ge=0.5, le=2, description="kokoro only"
+        default=None, ge=0.5, le=2, description="kokoro only (not qwen3-tts)"
     )
     exaggeration: Optional[float] = Field(
-        default=None, ge=0.25, le=2, description="chatterbox only"
+        default=None, ge=0.25, le=2, description="chatterbox only (not qwen3-tts)"
     )
     cfg_weight: Optional[float] = Field(
-        default=None, alias="cfgWeight", ge=0, le=1, description="chatterbox only"
+        default=None, alias="cfgWeight", ge=0, le=1, description="chatterbox only (not qwen3-tts)"
     )
     seed: Optional[int] = Field(
         default=None,
@@ -624,14 +639,23 @@ class SpeechSynthesizeResult(BaseModel):
     bit_depth: Literal[16] = Field(..., alias="bitDepth")
 
     served_engine: SpeechEngine = Field(..., alias="servedEngine")
+    #: Preset id, ``chatterbox-default``, or ``reference`` (chatterbox with a
+    #: reference, and always for qwen3-tts).
     served_voice: str = Field(..., alias="servedVoice")
     served_model: str = Field(..., alias="servedModel")
     model_revision: Optional[str] = Field(default=None, alias="modelRevision")
     runtime: str
     device_observed: Optional[str] = Field(default=None, alias="deviceObserved")
+    #: ``perth`` for chatterbox; ``None`` for kokoro and qwen3-tts.
     watermark: Optional[Literal["perth"]] = None
     seed_applied: Optional[int] = Field(default=None, alias="seedApplied")
     attributable: bool
+    #: Lowercase hex SHA-256 of the reference audio the worker conditioned on.
+    #: ``None`` when no reference was used (or an older worker); never ``None``
+    #: for qwen3-tts (the platform refuses that commit as output_unverifiable).
+    reference_audio_sha256: Optional[str] = Field(default=None, alias="referenceAudioSha256")
+    #: SHA-256 of the UTF-8 reference transcript (after NFC). ``None`` when none.
+    reference_text_sha256: Optional[str] = Field(default=None, alias="referenceTextSha256")
 
     job_id: str = Field(..., alias="jobId")
     input_chars: int = Field(..., alias="inputChars")
@@ -748,6 +772,62 @@ class RerankResponse(BaseModel):
     reason: Optional[str] = None
     #: The underlying exception when degraded (excluded from serialization).
     error: Optional[Exception] = Field(default=None, exclude=True)
+
+
+# ─── Direct inference: audio transcription ──────────────────────────────────
+#
+# Wire shape of model-router ``POST /v1/audio/transcriptions``
+# (``AudioTranscriptionResponse`` in services/model-router/src/models.py).
+# There is no ``whizai`` block: attribution is ``provider`` and ``model``.
+
+#: Output formats; the server default is ``verbose_json`` (with segments).
+TranscriptionResponseFormat = Literal["json", "text", "srt", "verbose_json", "vtt"]
+
+
+class TranscriptionSegment(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    text: str
+    #: Seconds.
+    start: float
+    #: Seconds.
+    end: float
+    #: 0..1 (converted from Whisper's avg_logprob), ``None`` when unknown.
+    confidence: Optional[float] = None
+
+
+class AudioTranscriptionResponse(BaseModel):
+    """Response of ``POST /v1/audio/transcriptions``."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    text: str
+    language: Optional[str] = None
+    #: Audio duration in seconds.
+    duration: Optional[float] = None
+    #: Present for ``verbose_json``.
+    segments: Optional[List[TranscriptionSegment]] = None
+    #: Provider that served it (e.g. ``vllm``, ``openai``).
+    provider: str
+    #: Model that served it.
+    model: str
+    request_id: Optional[str] = None
+
+
+class TranscriptionPendingError(WhizuraiError):
+    """A ``202 {jobId, state}`` answer: the transcription is still owed.
+
+    Only possible with ``metadata={"idempotencyKey": ...}``. Re-send the same
+    request to re-attach.
+    """
+
+    def __init__(self, job_id: Optional[str], state: Optional[str]):
+        super().__init__(
+            f"Transcription still running (job {job_id}, state {state}); "
+            "re-send the same request to re-attach."
+        )
+        self.job_id = job_id
+        self.state = state
 
 
 class EmbeddingSpaceError(WhizuraiError):

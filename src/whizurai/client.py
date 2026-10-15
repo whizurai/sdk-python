@@ -18,6 +18,7 @@ from httpx import ConnectError, HTTPError, TimeoutException
 from .types import (
     APIError,
     Artifact,
+    AudioTranscriptionResponse,
     AuthenticationError,
     Capability,
     ClientConfig,
@@ -40,6 +41,7 @@ from .types import (
     StatusResponse,
     TERMINAL_RUN_STATUSES,
     TimeoutError,
+    TranscriptionPendingError,
     Trigger,
     ValidationError,
     WhizuraiError,
@@ -47,7 +49,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.2.0"
+SDK_VERSION = "2.3.0"
 
 
 class WhizuraiClient:
@@ -263,10 +265,10 @@ class WhizuraiClient:
         """Absolute model-router URL; embed/rerank are not served by the gateway."""
         if not self.inference_base_url:
             raise WhizuraiError(
-                "embed()/rerank() require inference_base_url (the model-router URL, e.g. "
-                "'https://model-router.staging.whizur.ai'; env WHIZAI_INFERENCE_URL with "
-                "create_client_from_env). The gateway base_url does not serve "
-                "/v1/embeddings or /v1/rerank."
+                "embed()/rerank()/transcribe() require inference_base_url (the model-router "
+                "URL, e.g. 'https://model-router.staging.whizur.ai'; env WHIZAI_INFERENCE_URL "
+                "with create_client_from_env). The gateway base_url does not serve "
+                "/v1/embeddings, /v1/rerank or /v1/audio/transcriptions."
             )
         return f"{self.inference_base_url}{path}"
 
@@ -375,6 +377,84 @@ class WhizuraiClient:
                 error=exc,
             )
         return RerankResponse(**data)
+
+    async def transcribe(
+        self,
+        *,
+        file_url: Optional[str] = None,
+        file: Optional[str] = None,
+        artifact_id: Optional[str] = None,
+        model: Optional[str] = None,
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+        response_format: Optional[str] = None,
+        temperature: Optional[float] = None,
+        timestamp_granularities: Optional[List[str]] = None,
+        provider: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        execution_policy: Optional[str] = None,
+        priority: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> AudioTranscriptionResponse:
+        """Transcribe audio (``POST /v1/audio/transcriptions`` on model-router).
+
+        Exactly one of ``file_url``, ``file`` (base64) or ``artifact_id``.
+        ``execution_policy`` and ``priority`` are sent as ``x-execution-policy``
+        and ``x-priority``; ``timeout`` (seconds) bounds the call and is sent as
+        ``x-request-timeout-ms`` so the router drops the job when you stop
+        waiting. Attribution is the response's ``provider`` and ``model``.
+
+        A ``202`` (only with ``metadata={"idempotencyKey": ...}``) raises
+        :class:`TranscriptionPendingError`; re-send the same request to re-attach.
+
+        Served by model-router: requires ``inference_base_url``.
+        """
+        sources = [
+            name
+            for name, value in (("file_url", file_url), ("file", file), ("artifact_id", artifact_id))
+            if isinstance(value, str) and value
+        ]
+        if len(sources) != 1:
+            raise ValidationError(
+                "transcribe() requires exactly one of file_url, file (base64) or artifact_id"
+                + (f" (got {', '.join(sources)})." if sources else ".")
+            )
+        body: Dict[str, Any] = {}
+        if file_url:
+            body["file_url"] = file_url
+        if file:
+            body["file"] = file
+        if artifact_id:
+            body["artifact_id"] = artifact_id
+        optional = {
+            "model": model,
+            "language": language,
+            "prompt": prompt,
+            "response_format": response_format,
+            "temperature": temperature,
+            "timestamp_granularities": timestamp_granularities,
+            "provider": provider,
+            "metadata": metadata,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+
+        headers: Dict[str, str] = {}
+        if execution_policy:
+            headers["x-execution-policy"] = execution_policy
+        if priority:
+            headers["x-priority"] = priority
+        if timeout is not None:
+            headers["x-request-timeout-ms"] = str(int(timeout * 1000))
+
+        data = await self._inference_request(
+            "/v1/audio/transcriptions",
+            body,
+            headers=headers or None,
+            timeout=timeout,
+        )
+        if isinstance(data, dict) and "text" not in data and "jobId" in data:
+            raise TranscriptionPendingError(data.get("jobId"), data.get("state"))
+        return AudioTranscriptionResponse(**data)
 
     # ─── Health / status ────────────────────────────────────────────────────
 
