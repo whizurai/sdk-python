@@ -25,7 +25,7 @@ from whizurai import (
 class TestClientConfig:
     def test_defaults(self):
         cfg = ClientConfig(api_key="sk_test")
-        assert cfg.base_url == "https://api.whizurai.com"
+        assert cfg.base_url == "https://api.whizur.ai"
         assert cfg.timeout == 30.0
         assert cfg.max_retries == 3
 

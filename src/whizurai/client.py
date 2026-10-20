@@ -846,7 +846,7 @@ def create_client_from_env() -> WhizuraiClient:
     if not api_key:
         raise ValueError("WHIZURAI_API_KEY environment variable is required")
 
-    base_url = os.getenv("WHIZURAI_BASE_URL", "https://api.whizurai.com")
+    base_url = os.getenv("WHIZURAI_BASE_URL", "https://api.whizur.ai")
     inference_base_url = os.getenv("WHIZAI_INFERENCE_URL") or None
     return create_client(
         ClientConfig(api_key=api_key, base_url=base_url, inference_base_url=inference_base_url)

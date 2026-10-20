@@ -25,7 +25,7 @@ class ClientConfig(BaseModel):
 
     api_key: str = Field(..., description="API key for authentication")
     base_url: str = Field(
-        default="https://api.whizurai.com", description="Base URL for the API"
+        default="https://api.whizur.ai", description="Base URL for the API"
     )
     timeout: float = Field(default=30.0, description="Request timeout in seconds")
     max_retries: int = Field(

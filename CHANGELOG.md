@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.1
+
+### Fixed
+
+- The default `base_url` (and the `WHIZURAI_BASE_URL` fallback) is now
+  `https://api.whizur.ai`. It was `https://api.whizurai.com`, which does not
+  resolve, so a client created without `base_url` could not connect.
+
 ## 2.3.0
 
 ### Added
