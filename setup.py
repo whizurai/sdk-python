@@ -1,5 +1,6 @@
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read the README file
 this_directory = Path(__file__).parent
@@ -45,7 +46,7 @@ setup(
             "black>=23.0.0",
             "isort>=5.12.0",
             "mypy>=1.7.0",
-            "ruff>=0.1.0",
+            "ruff==0.17.1",  # pinned: new ruff releases enable new default rules
         ],
     },
     keywords="whizurai ai sdk python",

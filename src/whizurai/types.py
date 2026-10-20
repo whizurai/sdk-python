@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 # ─── Client configuration ───────────────────────────────────────────────────
 
 
@@ -370,31 +369,26 @@ class StatusResponse(BaseModel):
 class WhizuraiError(Exception):
     """Base exception for the Whizurai SDK."""
 
-    pass
 
 
 class AuthenticationError(WhizuraiError):
     """Authentication or authorization failure (401/403)."""
 
-    pass
 
 
 class NotFoundError(WhizuraiError):
     """Requested resource was not found (404)."""
 
-    pass
 
 
 class RateLimitError(WhizuraiError):
     """Rate limit exceeded (429)."""
 
-    pass
 
 
 class ValidationError(WhizuraiError):
     """Request validation error (400/422)."""
 
-    pass
 
 
 class APIError(WhizuraiError):
@@ -414,13 +408,11 @@ class APIError(WhizuraiError):
 class NetworkError(WhizuraiError):
     """Network connectivity error."""
 
-    pass
 
 
 class TimeoutError(WhizuraiError):
     """Request timeout error."""
 
-    pass
 
 
 # ─── video:multi-shot@v1 ────────────────────────────────────────────────────

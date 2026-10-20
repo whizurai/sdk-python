@@ -145,6 +145,7 @@ class TestSpeechSynthesize:
     def test_input_rejects_unknown_and_out_of_range(self):
         import pytest
         from pydantic import ValidationError as PydanticValidationError
+
         from whizurai import SpeechSynthesizeInput
 
         with pytest.raises(PydanticValidationError):
@@ -190,6 +191,7 @@ class TestSpeechSynthesize:
     def test_reference_text_bounds(self):
         import pytest
         from pydantic import ValidationError as PydanticValidationError
+
         from whizurai import SpeechSynthesizeInput
 
         with pytest.raises(PydanticValidationError):
@@ -200,14 +202,14 @@ class TestSpeechSynthesize:
     def test_result_reference_hashes(self):
         from whizurai import SpeechSynthesizeResult
 
-        base = dict(
-            url="https://s/a.wav", storageKey="k", contentType="audio/wav",
-            sizeBytes=10, sha256="0" * 64, durationMs=1000, sampleRate=24000,
-            channels=1, bitDepth=16, servedVoice="reference",
-            modelRevision="qwen-tts==0.1.1", runtime="tts", deviceObserved="mps",
-            watermark=None, seedApplied=None, attributable=True, jobId="j",
-            inputChars=2, wallMs=None, warnings=[],
-        )
+        base = {
+            "url": "https://s/a.wav", "storageKey": "k", "contentType": "audio/wav",
+            "sizeBytes": 10, "sha256": "0" * 64, "durationMs": 1000, "sampleRate": 24000,
+            "channels": 1, "bitDepth": 16, "servedVoice": "reference",
+            "modelRevision": "qwen-tts==0.1.1", "runtime": "tts", "deviceObserved": "mps",
+            "watermark": None, "seedApplied": None, "attributable": True, "jobId": "j",
+            "inputChars": 2, "wallMs": None, "warnings": [],
+        }
         r = SpeechSynthesizeResult(
             **base, servedEngine="qwen3-tts", servedModel="qwen3-tts-1.7b-base",
             referenceAudioSha256="a" * 64, referenceTextSha256="b" * 64,
@@ -221,13 +223,13 @@ class TestSpeechSynthesize:
     def test_result_word_timing(self):
         from whizurai import SpeechSynthesizeResult
 
-        base = dict(
-            url="https://s/a.wav", storageKey="k", contentType="audio/wav",
-            sizeBytes=10, sha256="0" * 64, durationMs=1000, sampleRate=24000,
-            channels=1, bitDepth=16, servedEngine="kokoro", servedVoice="af_heart",
-            servedModel="kokoro-82m", runtime="tts", attributable=True, jobId="j",
-            inputChars=9, warnings=[],
-        )
+        base = {
+            "url": "https://s/a.wav", "storageKey": "k", "contentType": "audio/wav",
+            "sizeBytes": 10, "sha256": "0" * 64, "durationMs": 1000, "sampleRate": 24000,
+            "channels": 1, "bitDepth": 16, "servedEngine": "kokoro", "servedVoice": "af_heart",
+            "servedModel": "kokoro-82m", "runtime": "tts", "attributable": True, "jobId": "j",
+            "inputChars": 9, "warnings": [],
+        }
         r = SpeechSynthesizeResult(
             **base,
             words=[
