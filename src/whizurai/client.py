@@ -9,13 +9,14 @@ the platform's public REST surface (``/v1/capabilities/:id/execute``,
 
 import asyncio
 import logging
-from urllib.parse import urljoin, urlsplit
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from httpx import ConnectError, HTTPError, TimeoutException
 
 from .types import (
+    TERMINAL_RUN_STATUSES,
     APIError,
     Artifact,
     AudioTranscriptionResponse,
@@ -37,9 +38,7 @@ from .types import (
     RerankResult,
     Run,
     RunLogEntry,
-    RunStatus,
     StatusResponse,
-    TERMINAL_RUN_STATUSES,
     TimeoutError,
     TranscriptionPendingError,
     Trigger,
@@ -96,7 +95,8 @@ class WhizuraiClient:
 
         logger.info("Initialized Whizurai client for %s", self.base_url)
 
-    async def __aenter__(self) -> "WhizuraiClient":
+    # typing.Self needs typing_extensions on 3.8; the concrete name is accurate here.
+    async def __aenter__(self) -> "WhizuraiClient":  # noqa: PYI034
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -846,7 +846,7 @@ def create_client_from_env() -> WhizuraiClient:
     if not api_key:
         raise ValueError("WHIZURAI_API_KEY environment variable is required")
 
-    base_url = os.getenv("WHIZURAI_BASE_URL", "https://api.whizurai.com")
+    base_url = os.getenv("WHIZURAI_BASE_URL", "https://api.whizur.ai")
     inference_base_url = os.getenv("WHIZAI_INFERENCE_URL") or None
     return create_client(
         ClientConfig(api_key=api_key, base_url=base_url, inference_base_url=inference_base_url)

@@ -23,13 +23,13 @@ from whizurai import (
 
 
 def make_config(**overrides):
-    base = dict(
-        api_key="test_api_key",
-        base_url="http://localhost:3000",
-        timeout=5.0,
-        max_retries=2,
-        retry_delay=0.0,
-    )
+    base = {
+        "api_key": "test_api_key",
+        "base_url": "http://localhost:3000",
+        "timeout": 5.0,
+        "max_retries": 2,
+        "retry_delay": 0.0,
+    }
     base.update(overrides)
     return ClientConfig(**base)
 

@@ -1,0 +1,10 @@
+# The package supports Python >= 3.8 (setup.py python_requires). Without this,
+# ruff assumes a newer target and asks for `X | None` / `list[str]` rewrites
+# that break pydantic models on 3.8 and 3.9 at runtime.
+target-version = "py38"
+
+[lint]
+# typing.Optional/List are used on purpose for 3.8 support; adding
+# `from __future__ import annotations` would change how pydantic resolves the
+# model annotations, which is not a lint-sized change.
+ignore = ["FA100"]

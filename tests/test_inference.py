@@ -6,16 +6,16 @@ import pytest
 from httpx import ConnectError, TimeoutException
 
 from whizurai import (
+    RECOMMENDED_EMBEDDING_MODEL,
     AuthenticationError,
     ClientConfig,
-    NotFoundError,
-    WhizuraiError,
-    create_client_from_env,
     EmbeddingSpaceError,
-    RECOMMENDED_EMBEDDING_MODEL,
+    NotFoundError,
     ValidationError,
     WhizuraiClient,
+    WhizuraiError,
     assert_same_embedding_space,
+    create_client_from_env,
 )
 
 SPACE = (

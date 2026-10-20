@@ -2,10 +2,11 @@
 AI Labs Image Service Client
 Python SDK for image generation, enhancement, and analysis
 """
-import httpx
-from typing import Optional, List, Dict, Any, Literal
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+import httpx
 
 
 @dataclass

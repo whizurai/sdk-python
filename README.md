@@ -20,7 +20,7 @@ from whizurai import WhizuraiClient, ClientConfig
 async def main():
     config = ClientConfig(
         api_key='your-api-key',
-        base_url='https://api.whizurai.com',  # Optional
+        base_url='https://api.whizur.ai',  # Optional
     )
 
     async with WhizuraiClient(config) as client:
