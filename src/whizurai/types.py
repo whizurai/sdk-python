@@ -842,6 +842,57 @@ class AudioTranscriptionResponse(BaseModel):
     request_id: Optional[str] = None
 
 
+# ─── Gateway inference: POST /v1/generate/text, POST /v1/images/describe ────
+# Mirrors @whizurai/types/gateway-inference; keep the two in lockstep.
+
+
+class GenerateTextChoice(BaseModel):
+    """One choice of ``POST /v1/generate/text``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    text: str
+    index: int = 0
+    #: The runtime's reason; ``length`` means the answer was truncated.
+    finish_reason: Optional[str] = None
+
+
+class GenerateTextResponse(BaseModel):
+    """Response of the gateway's ``POST /v1/generate/text``."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    id: Optional[str] = None
+    object: Optional[str] = None
+    created: Optional[int] = None
+    #: The model that served the request, not necessarily the one requested.
+    model: str
+    provider: Optional[str] = None
+    choices: List[GenerateTextChoice]
+    usage: Optional[Dict[str, int]] = None
+    #: Where it executed (``execution`` fleet|direct, ``runtime``, ``fleet_job_id``).
+    #: ``None`` means unattributed: do not infer a tier from its absence.
+    execution: Optional[Dict[str, Any]] = None
+
+
+class DescribeImageResponse(BaseModel):
+    """Response of the gateway's ``POST /v1/images/describe``."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=(), populate_by_name=True)
+
+    description: str
+    #: Provider adapter that served the request (e.g. ``ollama``).
+    provider: str
+    #: The model that served the request.
+    model: str
+    request_id: Optional[str] = Field(None, alias="requestId")
+    #: Wall-clock seconds.
+    response_time: Optional[float] = Field(None, alias="responseTime")
+    usage: Optional[Dict[str, int]] = None
+    #: Execution attribution (endpoint, runtime, fleet job, worker) where known.
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class TranscriptionPendingError(WhizuraiError):
     """A ``202 {jobId, state}`` answer: the transcription is still owed.
 

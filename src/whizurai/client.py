@@ -23,9 +23,11 @@ from .types import (
     AuthenticationError,
     Capability,
     ClientConfig,
+    DescribeImageResponse,
     DryRunResult,
     EmbeddingsResponse,
     ExecuteCapabilityResponse,
+    GenerateTextResponse,
     HealthResponse,
     ListArtifactsResponse,
     ListCapabilitiesResponse,
@@ -48,7 +50,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.3.0"
+SDK_VERSION = "2.4.0"
 
 
 class WhizuraiClient:
@@ -455,6 +457,97 @@ class WhizuraiClient:
         if isinstance(data, dict) and "text" not in data and "jobId" in data:
             raise TranscriptionPendingError(data.get("jobId"), data.get("state"))
         return AudioTranscriptionResponse(**data)
+
+    # ─── Gateway inference (POST /v1/generate/text, /v1/images/describe) ────
+
+    async def generate_text(
+        self,
+        prompt: str,
+        *,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        system_prompt: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+    ) -> GenerateTextResponse:
+        """Generate text through the gateway (``POST /v1/generate/text`` at ``base_url``).
+
+        The gateway takes the app from the key and leases the work on the fleet
+        under that app's policy, so declare ``metadata={"priority": ...}``
+        (``interactive`` only where a person waits and the policy grants it).
+        Omitted ``model`` is ``chat``, fleet-required. ``timeout`` (seconds)
+        bounds this HTTP call only. Sent once: a fleet inference is never
+        retried by the client. The served model is the response's ``model``.
+        """
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValidationError("generate_text() requires a non-empty prompt.")
+        body: Dict[str, Any] = {"prompt": prompt}
+        optional = {
+            "model": model,
+            "provider": provider,
+            "maxTokens": max_tokens,
+            "temperature": temperature,
+            "systemPrompt": system_prompt,
+            "reasoningEffort": reasoning_effort,
+            "metadata": metadata,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+        data = await self._make_request(
+            "POST", "/v1/generate/text", data=body, retries=0, timeout=timeout
+        )
+        return GenerateTextResponse(**data)
+
+    async def describe_image(
+        self,
+        *,
+        image: Optional[str] = None,
+        image_url: Optional[str] = None,
+        prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        detail: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        request_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+    ) -> DescribeImageResponse:
+        """Describe an image through the gateway (``POST /v1/images/describe`` at ``base_url``).
+
+        Exactly one of ``image`` (base64) or ``image_url``. Synchronous and
+        byte-exact, unlike the ``image:describe`` capability. ``model`` names an
+        exact model routed to whichever fleet worker holds it; omitted, the
+        ``vision`` alias runs. Declare ``metadata={"priority": ...}``. Local
+        vision models can be slow: set ``timeout`` (seconds) above
+        ``metadata["timeoutMs"]``. Sent once, never retried by the client.
+        """
+        has_image = isinstance(image, str) and bool(image)
+        has_url = isinstance(image_url, str) and bool(image_url)
+        if has_image == has_url:
+            raise ValidationError(
+                "describe_image() requires exactly one of image (base64) or image_url."
+            )
+        body: Dict[str, Any] = {}
+        optional = {
+            "image": image,
+            "imageUrl": image_url,
+            "prompt": prompt,
+            "model": model,
+            "provider": provider,
+            "detail": detail,
+            "maxTokens": max_tokens,
+            "temperature": temperature,
+            "requestId": request_id,
+            "metadata": metadata,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+        data = await self._make_request(
+            "POST", "/v1/images/describe", data=body, retries=0, timeout=timeout
+        )
+        return DescribeImageResponse(**data)
 
     # ─── Health / status ────────────────────────────────────────────────────
 
