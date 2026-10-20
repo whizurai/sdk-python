@@ -97,6 +97,36 @@ span in the text as sent. They carry no word text. `timing.source` is `engine`
 `model` and a `confidence`). Both are `None` when no timing was established,
 including results from older platforms.
 
+## Text generation and image description (gateway)
+
+`generate_text()` and `describe_image()` call the api-gateway at `base_url` (no
+`inference_base_url` needed). The gateway takes your app from the API key and
+runs the request on the WhizAI fleet under your app's policy, so declare a
+scheduling class on every call.
+
+```python
+text = await client.generate_text(
+    "Suggest a caption for a corgi in a raincoat",
+    model="chat",
+    reasoning_effort="none",
+    max_tokens=200,
+    metadata={"priority": "production", "timeoutMs": 60_000},
+)
+print(text.choices[0].text, text.model, text.execution)
+
+scene = await client.describe_image(
+    image=base64_bytes,  # or image_url=..., never both
+    prompt="Describe the subject and setting as JSON.",
+    model="qwen3-vl:30b-a3b-instruct",  # omitted: the `vision` alias
+    metadata={"priority": "interactive", "timeoutMs": 315_000},
+    timeout=330.0,  # seconds; keep it above metadata["timeoutMs"]
+)
+print(scene.description, scene.model)
+```
+
+- Read the served model from the response's `model`, never from your request.
+- Neither call is retried by the client: one call is at most one inference.
+
 ## Embeddings and Rerank
 
 Direct inference against `POST /v1/embeddings` and `POST /v1/rerank`. Field

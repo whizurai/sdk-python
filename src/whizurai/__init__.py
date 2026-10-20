@@ -48,12 +48,15 @@ from .types import (
     Capability,
     CapabilityStatus,
     ClientConfig,
+    DescribeImageResponse,
     DryRunResult,
     EmbeddingData,
     EmbeddingProvenance,
     EmbeddingSpaceError,
     EmbeddingsResponse,
     ExecuteCapabilityResponse,
+    GenerateTextChoice,
+    GenerateTextResponse,
     HealthResponse,
     InferenceProvenance,
     InferenceWorker,
@@ -93,7 +96,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.3.1"
+__version__ = "2.4.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -117,6 +120,7 @@ __all__ = [
     "CapabilityStatus",
     # Configuration
     "ClientConfig",
+    "DescribeImageResponse",
     "DryRunResult",
     "EmbeddingData",
     "EmbeddingProvenance",
@@ -124,6 +128,8 @@ __all__ = [
     "EmbeddingsResponse",
     "ExecuteCapabilityResponse",
     # Health and status
+    "GenerateTextChoice",
+    "GenerateTextResponse",
     "HealthResponse",
     "InferenceProvenance",
     "InferenceWorker",

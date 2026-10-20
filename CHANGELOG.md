@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.0
+
+### Added
+
+- `client.generate_text(prompt, ...)` for the gateway's `POST /v1/generate/text`
+  and `client.describe_image(image=... | image_url=..., ...)` for
+  `POST /v1/images/describe`. Both go to `base_url` (the api-gateway), not
+  model-router: the gateway takes the app from the key, rate-limits, and leases
+  the work on the fleet under that app's policy. Declare
+  `metadata={"priority": ...}`. Keyword arguments are snake_case and map to the
+  camelCase wire; `timeout` (seconds) bounds the HTTP call. Neither is retried
+  by the client, so one call is at most one inference. Types:
+  `GenerateTextResponse`, `GenerateTextChoice`, `DescribeImageResponse`
+  (mirroring `@whizurai/types/gateway-inference` 1.4.0 and sdk-js 3.3.0).
+
 ## 2.3.1
 
 ### Fixed
