@@ -615,6 +615,37 @@ class SpeechWarning(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class SpeechWordTiming(BaseModel):
+    """One spoken word of the synthesized audio.
+
+    ``[char_start, char_end)`` is the word's span in the text as sent (NFC,
+    trimmed). There is no word text: the result never echoes the input.
+    """
+
+    start_ms: int = Field(..., alias="startMs")
+    end_ms: int = Field(..., alias="endMs")
+    char_start: int = Field(..., alias="charStart")
+    char_end: int = Field(..., alias="charEnd")
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+
+class SpeechTimingProvenance(BaseModel):
+    """How ``words`` was established.
+
+    ``engine``: the engine's own timestamps (kokoro). ``aligned``: a forced
+    alignment of the text to the audio.
+    """
+
+    source: Literal["engine", "aligned"]
+    #: The aligner model for ``aligned``; ``None`` for engine timing.
+    model: Optional[str] = None
+    #: Mean per-character alignment probability; ``None`` when not measured.
+    confidence: Optional[float] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
 class SpeechSynthesizeResult(BaseModel):
     """Output of ``speech:synthesize@v1`` (the audio artifact's metadata).
 
@@ -661,6 +692,11 @@ class SpeechSynthesizeResult(BaseModel):
     input_chars: int = Field(..., alias="inputChars")
     wall_ms: Optional[int] = Field(default=None, alias="wallMs")
     warnings: List[SpeechWarning] = Field(default_factory=list)
+    #: Word timing for read-along. ``None`` (or absent, from an older
+    #: platform) when no timing was established.
+    words: Optional[List[SpeechWordTiming]] = None
+    #: How ``words`` was established; ``None`` exactly when ``words`` is.
+    timing: Optional[SpeechTimingProvenance] = None
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 

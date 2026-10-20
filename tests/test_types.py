@@ -217,3 +217,28 @@ class TestSpeechSynthesize:
         # An older worker reports neither: they parse as None.
         old = SpeechSynthesizeResult(**base, servedEngine="kokoro", servedModel="kokoro-82m")
         assert old.reference_audio_sha256 is None and old.reference_text_sha256 is None
+
+    def test_result_word_timing(self):
+        from whizurai import SpeechSynthesizeResult
+
+        base = dict(
+            url="https://s/a.wav", storageKey="k", contentType="audio/wav",
+            sizeBytes=10, sha256="0" * 64, durationMs=1000, sampleRate=24000,
+            channels=1, bitDepth=16, servedEngine="kokoro", servedVoice="af_heart",
+            servedModel="kokoro-82m", runtime="tts", attributable=True, jobId="j",
+            inputChars=9, warnings=[],
+        )
+        r = SpeechSynthesizeResult(
+            **base,
+            words=[
+                {"startMs": 0, "endMs": 400, "charStart": 0, "charEnd": 4},
+                {"startMs": 450, "endMs": 900, "charStart": 5, "charEnd": 9},
+            ],
+            timing={"source": "aligned", "model": "facebook/wav2vec2-base-960h", "confidence": 0.91},
+        )
+        assert [(w.start_ms, w.char_end) for w in r.words] == [(0, 4), (450, 9)]
+        assert r.timing.source == "aligned" and r.timing.confidence == 0.91
+        # An older platform sends neither; explicit nulls parse the same way.
+        assert SpeechSynthesizeResult(**base).words is None
+        none = SpeechSynthesizeResult(**base, words=None, timing=None)
+        assert none.words is None and none.timing is None

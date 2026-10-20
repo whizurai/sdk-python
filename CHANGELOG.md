@@ -19,6 +19,12 @@
   `request_id`). A `202` pending answer raises `TranscriptionPendingError`.
   New exports: `AudioTranscriptionResponse`, `TranscriptionSegment`,
   `TranscriptionResponseFormat`, `TranscriptionPendingError`.
+- `SpeechSynthesizeResult` gains `words` (`List[SpeechWordTiming]`:
+  `start_ms`, `end_ms`, `char_start`, `char_end` in the text as sent; no word
+  text) and `timing` (`SpeechTimingProvenance`: `source` `engine` or `aligned`,
+  the aligner `model`, a `confidence`) for read-along. Both default to `None`,
+  so results from older platforms still parse. New exports: `SpeechWordTiming`,
+  `SpeechTimingProvenance`.
 
 ## 2.2.0
 
