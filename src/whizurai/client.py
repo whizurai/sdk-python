@@ -9,6 +9,7 @@ the platform's public REST surface (``/v1/capabilities/:id/execute``,
 
 import asyncio
 import logging
+from urllib.parse import urljoin, urlsplit
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
@@ -17,6 +18,7 @@ from httpx import ConnectError, HTTPError, TimeoutException
 from .types import (
     APIError,
     Artifact,
+    AudioTranscriptionResponse,
     AuthenticationError,
     Capability,
     ClientConfig,
@@ -39,6 +41,7 @@ from .types import (
     StatusResponse,
     TERMINAL_RUN_STATUSES,
     TimeoutError,
+    TranscriptionPendingError,
     Trigger,
     ValidationError,
     WhizuraiError,
@@ -46,7 +49,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.1.1"
+SDK_VERSION = "2.3.0"
 
 
 class WhizuraiClient:
@@ -262,10 +265,10 @@ class WhizuraiClient:
         """Absolute model-router URL; embed/rerank are not served by the gateway."""
         if not self.inference_base_url:
             raise WhizuraiError(
-                "embed()/rerank() require inference_base_url (the model-router URL, e.g. "
-                "'https://model-router.staging.whizur.ai'; env WHIZAI_INFERENCE_URL with "
-                "create_client_from_env). The gateway base_url does not serve "
-                "/v1/embeddings or /v1/rerank."
+                "embed()/rerank()/transcribe() require inference_base_url (the model-router "
+                "URL, e.g. 'https://model-router.staging.whizur.ai'; env WHIZAI_INFERENCE_URL "
+                "with create_client_from_env). The gateway base_url does not serve "
+                "/v1/embeddings, /v1/rerank or /v1/audio/transcriptions."
             )
         return f"{self.inference_base_url}{path}"
 
@@ -375,6 +378,84 @@ class WhizuraiClient:
             )
         return RerankResponse(**data)
 
+    async def transcribe(
+        self,
+        *,
+        file_url: Optional[str] = None,
+        file: Optional[str] = None,
+        artifact_id: Optional[str] = None,
+        model: Optional[str] = None,
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+        response_format: Optional[str] = None,
+        temperature: Optional[float] = None,
+        timestamp_granularities: Optional[List[str]] = None,
+        provider: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        execution_policy: Optional[str] = None,
+        priority: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> AudioTranscriptionResponse:
+        """Transcribe audio (``POST /v1/audio/transcriptions`` on model-router).
+
+        Exactly one of ``file_url``, ``file`` (base64) or ``artifact_id``.
+        ``execution_policy`` and ``priority`` are sent as ``x-execution-policy``
+        and ``x-priority``; ``timeout`` (seconds) bounds the call and is sent as
+        ``x-request-timeout-ms`` so the router drops the job when you stop
+        waiting. Attribution is the response's ``provider`` and ``model``.
+
+        A ``202`` (only with ``metadata={"idempotencyKey": ...}``) raises
+        :class:`TranscriptionPendingError`; re-send the same request to re-attach.
+
+        Served by model-router: requires ``inference_base_url``.
+        """
+        sources = [
+            name
+            for name, value in (("file_url", file_url), ("file", file), ("artifact_id", artifact_id))
+            if isinstance(value, str) and value
+        ]
+        if len(sources) != 1:
+            raise ValidationError(
+                "transcribe() requires exactly one of file_url, file (base64) or artifact_id"
+                + (f" (got {', '.join(sources)})." if sources else ".")
+            )
+        body: Dict[str, Any] = {}
+        if file_url:
+            body["file_url"] = file_url
+        if file:
+            body["file"] = file
+        if artifact_id:
+            body["artifact_id"] = artifact_id
+        optional = {
+            "model": model,
+            "language": language,
+            "prompt": prompt,
+            "response_format": response_format,
+            "temperature": temperature,
+            "timestamp_granularities": timestamp_granularities,
+            "provider": provider,
+            "metadata": metadata,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+
+        headers: Dict[str, str] = {}
+        if execution_policy:
+            headers["x-execution-policy"] = execution_policy
+        if priority:
+            headers["x-priority"] = priority
+        if timeout is not None:
+            headers["x-request-timeout-ms"] = str(int(timeout * 1000))
+
+        data = await self._inference_request(
+            "/v1/audio/transcriptions",
+            body,
+            headers=headers or None,
+            timeout=timeout,
+        )
+        if isinstance(data, dict) and "text" not in data and "jobId" in data:
+            raise TranscriptionPendingError(data.get("jobId"), data.get("state"))
+        return AudioTranscriptionResponse(**data)
+
     # ─── Health / status ────────────────────────────────────────────────────
 
     async def health_check(self) -> HealthResponse:
@@ -478,6 +559,20 @@ class CapabilitiesResource:
             headers=headers,
         )
         return ExecuteCapabilityResponse(**data).run
+
+    async def cancel(self, run_id: str) -> Run:
+        """Cancel a capability run.
+
+        Calls ``POST /v1/capabilities/capability-runs/:runId/cancel``; idempotent
+        for an already-cancelled run. ``run_id`` is the id returned by
+        :meth:`run`. This marks the run and cancels its workflow run
+        best-effort; it does not yet stop work already handed to a worker
+        (platform follow-up).
+        """
+        data = await self._client._make_request(
+            "POST", f"/v1/capabilities/capability-runs/{run_id}/cancel"
+        )
+        return Run(**data)
 
     async def dry_run(
         self, id_or_slug: str, input: Optional[Dict[str, Any]] = None
@@ -603,6 +698,58 @@ class ArtifactsResource:
             "GET", f"/v1/artifacts/{artifact_id}"
         )
         return Artifact(**data)
+
+    async def download(self, artifact_id: str) -> bytes:
+        """Download an artifact's bytes via its resolved URL.
+
+        Credentials go to the gateway only. A relative URL, or an absolute URL on
+        the gateway's own origin, is fetched with the authenticated client. An
+        absolute URL on any other origin (object storage, a CDN) is fetched with
+        a bare client that sends no ``Authorization`` or ``X-API-Key``: the URL is
+        itself the bearer capability. A redirect off the gateway is followed
+        without credentials too.
+        """
+        artifact = await self.get(artifact_id)
+        url = artifact.url or (artifact.metadata or {}).get("url")
+        if not url:
+            raise WhizuraiError(f"Artifact {artifact_id} has no downloadable URL")
+        return await self._fetch_bytes(url)
+
+    async def _fetch_bytes(self, url: str) -> bytes:
+        client = self._client
+        gateway = urlsplit(client.base_url)
+        for _ in range(6):
+            target = urlsplit(url)
+            same_origin = not target.netloc or (
+                (target.scheme, target.netloc) == (gateway.scheme, gateway.netloc)
+            )
+            if same_origin:
+                response = await client.client.get(
+                    url, follow_redirects=False, timeout=client.timeout
+                )
+            else:
+                async with httpx.AsyncClient(timeout=client.timeout) as bare:
+                    response = await bare.get(url, follow_redirects=False)
+            if response.status_code in (301, 302, 303, 307, 308):
+                location = response.headers.get("location")
+                if not location:
+                    raise APIError(
+                        "Artifact download redirect had no Location",
+                        status_code=response.status_code,
+                    )
+                url = urljoin(f"{client.base_url}/", urljoin(url, location))
+                continue
+            if 200 <= response.status_code < 300:
+                return response.content
+            if response.status_code in (401, 403):
+                raise AuthenticationError("Artifact download was refused")
+            if response.status_code == 404:
+                raise NotFoundError("Artifact content not found")
+            raise APIError(
+                f"Artifact download failed with {response.status_code}",
+                status_code=response.status_code,
+            )
+        raise APIError("Artifact download followed too many redirects")
 
 
 class TriggersResource:

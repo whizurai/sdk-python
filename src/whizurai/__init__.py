@@ -39,6 +39,10 @@ from .types import (
     RECOMMENDED_EMBEDDING_MODEL,
     RECOMMENDED_RERANK_MODEL,
     RERANK_MAX_DOCUMENTS,
+    AudioTranscriptionResponse,
+    TranscriptionPendingError,
+    TranscriptionResponseFormat,
+    TranscriptionSegment,
     EmbeddingData,
     EmbeddingProvenance,
     EmbeddingSpaceError,
@@ -49,6 +53,14 @@ from .types import (
     RerankResult,
     assert_same_embedding_space,
     embedding_space_of,
+    SPEECH_SYNTHESIZE,
+    SpeechEngine,
+    SpeechPriority,
+    SpeechSynthesizeInput,
+    SpeechSynthesizeResult,
+    SpeechTimingProvenance,
+    SpeechWarning,
+    SpeechWordTiming,
     VIDEO_MULTI_SHOT,
     SubjectReference,
     VideoMultiShotInput,
@@ -81,11 +93,15 @@ from .types import (
     WhizuraiError,
 )
 
-__version__ = "2.1.1"
+__version__ = "2.3.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
+    "AudioTranscriptionResponse",
+    "TranscriptionPendingError",
+    "TranscriptionResponseFormat",
+    "TranscriptionSegment",
     # Embeddings + rerank
     "EMBEDDINGS_MAX_INPUTS",
     "RECOMMENDED_EMBEDDING_MODEL",
@@ -101,6 +117,14 @@ __all__ = [
     "RerankResult",
     "assert_same_embedding_space",
     "embedding_space_of",
+    "SPEECH_SYNTHESIZE",
+    "SpeechEngine",
+    "SpeechPriority",
+    "SpeechSynthesizeInput",
+    "SpeechSynthesizeResult",
+    "SpeechTimingProvenance",
+    "SpeechWarning",
+    "SpeechWordTiming",
     "VIDEO_MULTI_SHOT",
     "SubjectReference",
     "VideoMultiShotInput",

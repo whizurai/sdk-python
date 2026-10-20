@@ -17,6 +17,7 @@ from whizurai import (
     TimeoutError,
     ValidationError,
     WhizuraiClient,
+    WhizuraiError,
     create_client,
 )
 
@@ -217,6 +218,106 @@ class TestArtifacts:
         client._make_request = AsyncMock(return_value={"id": "a1", "type": "image"})
         art = await client.artifacts.get("a1")
         assert art.type == "image"
+
+
+class TestCancel:
+    async def test_cancel_posts_to_capability_run_route(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "r1", "status": "cancelled"})
+        )
+        run = await client.capabilities.cancel("r1")
+        kwargs = client.client.request.await_args.kwargs
+        assert kwargs["method"] == "POST"
+        assert kwargs["url"] == "/v1/capabilities/capability-runs/r1/cancel"
+        assert run.id == "r1"
+        assert run.status == RunStatus.CANCELLED
+
+
+def raw_response(status=200, content=b"", headers=None):
+    resp = MagicMock()
+    resp.status_code = status
+    resp.content = content
+    resp.headers = headers or {}
+    return resp
+
+
+class TestArtifactDownload:
+    def _bare(self, monkeypatch, response):
+        """Replace the bare httpx client; record the headers it was built with."""
+        seen = {}
+
+        class FakeBare:
+            def __init__(self, *a, **kw):
+                seen["init"] = kw
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, url, **kw):
+                seen["url"] = url
+                seen["kw"] = kw
+                return response
+
+        monkeypatch.setattr("whizurai.client.httpx.AsyncClient", FakeBare)
+        return seen
+
+    async def test_foreign_origin_gets_no_credentials(self, client, monkeypatch):
+        client.client.request = AsyncMock(
+            return_value=fake_response(
+                200, {"id": "a1", "url": "https://storage.example.net/a.wav?sig=x"}
+            )
+        )
+        client.client.get = AsyncMock()
+        seen = self._bare(monkeypatch, raw_response(200, b"RIFF"))
+        data = await client.artifacts.download("a1")
+        assert data == b"RIFF"
+        client.client.get.assert_not_awaited()
+        assert seen["url"] == "https://storage.example.net/a.wav?sig=x"
+        assert "headers" not in seen["init"] and "headers" not in seen["kw"]
+
+    async def test_relative_url_uses_authenticated_client(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "a1", "url": "/v1/artifacts/a1/content"})
+        )
+        client.client.get = AsyncMock(return_value=raw_response(200, b"abc"))
+        assert await client.artifacts.download("a1") == b"abc"
+        assert client.client.get.await_args.args[0] == "/v1/artifacts/a1/content"
+
+    async def test_same_origin_absolute_uses_authenticated_client(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "a1", "url": "http://localhost:3000/f/a1"})
+        )
+        client.client.get = AsyncMock(return_value=raw_response(200, b"zz"))
+        assert await client.artifacts.download("a1") == b"zz"
+
+    async def test_redirect_off_gateway_drops_credentials(self, client, monkeypatch):
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "a1", "url": "/v1/artifacts/a1/content"})
+        )
+        client.client.get = AsyncMock(
+            return_value=raw_response(302, headers={"location": "https://cdn.example.net/x"})
+        )
+        seen = self._bare(monkeypatch, raw_response(200, b"cdn"))
+        assert await client.artifacts.download("a1") == b"cdn"
+        assert client.client.get.await_count == 1
+        assert seen["url"] == "https://cdn.example.net/x"
+
+    async def test_missing_url_and_http_errors(self, client, monkeypatch):
+        client.client.request = AsyncMock(return_value=fake_response(200, {"id": "a1"}))
+        with pytest.raises(WhizuraiError):
+            await client.artifacts.download("a1")
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "a1", "url": "https://s.example.net/a"})
+        )
+        self._bare(monkeypatch, raw_response(403))
+        with pytest.raises(AuthenticationError):
+            await client.artifacts.download("a1")
+        self._bare(monkeypatch, raw_response(500))
+        with pytest.raises(APIError):
+            await client.artifacts.download("a1")
 
 
 class TestTriggers:
