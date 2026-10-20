@@ -90,6 +90,13 @@ run = await client.capabilities.run(SPEECH_SYNTHESIZE, body)
 what the worker actually conditioned on (`None` when no reference was used;
 never `None` for `qwen3-tts`).
 
+`SpeechSynthesizeResult.words` and `.timing` give word timing for read-along:
+each word's `start_ms` / `end_ms` in the audio and its `[char_start, char_end)`
+span in the text as sent. They carry no word text. `timing.source` is `engine`
+(the engine's own timestamps) or `aligned` (forced alignment, with the aligner
+`model` and a `confidence`). Both are `None` when no timing was established,
+including results from older platforms.
+
 ## Embeddings and Rerank
 
 Direct inference against `POST /v1/embeddings` and `POST /v1/rerank`. Field
