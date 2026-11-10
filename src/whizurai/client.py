@@ -44,8 +44,8 @@ from .types import (
     TimeoutError,
     TranscriptionPendingError,
     Trigger,
-    VideoRouteTable,
     ValidationError,
+    VideoRouteTable,
     WhizuraiError,
 )
 
