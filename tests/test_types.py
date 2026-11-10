@@ -267,12 +267,12 @@ class TestImageGenerate:
         from whizurai import ImageGenerateInput, ImageGenerateReference
 
         for bad in (
-            dict(reference_image_artifact_id="a"),
-            dict(reference_strength=0.3),
-            dict(reference_image_artifact_id="a", reference_image_url="https://x", reference_strength=0.3),
-            dict(reference_image_artifact_id="a", reference_strength=0.99),
-            dict(reference_image_base64="AAAA", reference_strength=0.3),
-            dict(unknown=1),
+            {"reference_image_artifact_id": "a"},
+            {"reference_strength": 0.3},
+            {"reference_image_artifact_id": "a", "reference_image_url": "https://x", "reference_strength": 0.3},
+            {"reference_image_artifact_id": "a", "reference_strength": 0.99},
+            {"reference_image_base64": "AAAA", "reference_strength": 0.3},
+            {"unknown": 1},
         ):
             with pytest.raises(PydanticValidationError):
                 ImageGenerateInput(prompt="x", **bad)
