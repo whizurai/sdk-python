@@ -89,6 +89,9 @@ from .types import (
     ValidationError,
     VideoMultiShotInput,
     VideoMultiShotOutput,
+    VideoRouteTable,
+    VideoRouteTableEntry,
+    VideoRouteTierSummary,
     VideoShot,
     WhizuraiError,
     assert_same_embedding_space,
@@ -96,7 +99,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -166,6 +169,9 @@ __all__ = [
     "ValidationError",
     "VideoMultiShotInput",
     "VideoMultiShotOutput",
+    "VideoRouteTable",
+    "VideoRouteTableEntry",
+    "VideoRouteTierSummary",
     "VideoShot",
     # Client + resources
     "WhizuraiClient",

@@ -45,12 +45,13 @@ from .types import (
     TranscriptionPendingError,
     Trigger,
     ValidationError,
+    VideoRouteTable,
     WhizuraiError,
 )
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.4.0"
+SDK_VERSION = "2.5.0"
 
 
 class WhizuraiClient:
@@ -560,6 +561,16 @@ class WhizuraiClient:
         """Lightweight platform status (``GET /v1/status``)."""
         data = await self._make_request("GET", "/v1/status")
         return StatusResponse(**data)
+
+    async def get_video_routes(self) -> VideoRouteTable:
+        """The video route table (``GET /v1/model-router/video-routes``).
+
+        Which video models a requirements-routed shot can land on, per route
+        tier, and whether the router picks each automatically or only when
+        named. Apps that price video check their price list against it.
+        """
+        data = await self._make_request("GET", "/v1/model-router/video-routes")
+        return VideoRouteTable.model_validate(data)
 
     async def ping(self) -> bool:
         """Return ``True`` if the platform is reachable."""
