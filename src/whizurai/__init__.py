@@ -36,6 +36,7 @@ from .client import (
 )
 from .types import (
     EMBEDDINGS_MAX_INPUTS,
+    IMAGE_GENERATE,
     RECOMMENDED_EMBEDDING_MODEL,
     RECOMMENDED_RERANK_MODEL,
     RERANK_MAX_DOCUMENTS,
@@ -58,6 +59,8 @@ from .types import (
     GenerateTextChoice,
     GenerateTextResponse,
     HealthResponse,
+    ImageGenerateInput,
+    ImageGenerateReference,
     InferenceProvenance,
     InferenceWorker,
     ListArtifactsResponse,
@@ -99,13 +102,14 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.5.0"
+__version__ = "2.6.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
 __all__ = [
     # Embeddings + rerank
     "EMBEDDINGS_MAX_INPUTS",
+    "IMAGE_GENERATE",
     "RECOMMENDED_EMBEDDING_MODEL",
     "RECOMMENDED_RERANK_MODEL",
     "RERANK_MAX_DOCUMENTS",
@@ -134,6 +138,8 @@ __all__ = [
     "GenerateTextChoice",
     "GenerateTextResponse",
     "HealthResponse",
+    "ImageGenerateInput",
+    "ImageGenerateReference",
     "InferenceProvenance",
     "InferenceWorker",
     "ListArtifactsResponse",

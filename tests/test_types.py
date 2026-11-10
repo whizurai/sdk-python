@@ -244,3 +244,36 @@ class TestSpeechSynthesize:
         assert SpeechSynthesizeResult(**base).words is None
         none = SpeechSynthesizeResult(**base, words=None, timing=None)
         assert none.words is None and none.timing is None
+
+
+class TestImageGenerate:
+    def test_slug_and_wire_names(self):
+        from whizurai import IMAGE_GENERATE, ImageGenerateInput
+
+        assert IMAGE_GENERATE == "image:generate"
+        body = ImageGenerateInput(
+            prompt="a bar", reference_image_base64="AAAA", reference_image_content_type="image/jpeg",
+            reference_strength=0.3,
+        ).model_dump(by_alias=True, exclude_none=True)
+        assert body == {
+            "prompt": "a bar", "referenceImageBase64": "AAAA",
+            "referenceImageContentType": "image/jpeg", "referenceStrength": 0.3,
+        }
+
+    def test_reference_rules(self):
+        import pytest
+        from pydantic import ValidationError as PydanticValidationError
+
+        from whizurai import ImageGenerateInput, ImageGenerateReference
+
+        for bad in (
+            {"reference_image_artifact_id": "a"},
+            {"reference_strength": 0.3},
+            {"reference_image_artifact_id": "a", "reference_image_url": "https://x", "reference_strength": 0.3},
+            {"reference_image_artifact_id": "a", "reference_strength": 0.99},
+            {"reference_image_base64": "AAAA", "reference_strength": 0.3},
+            {"unknown": 1},
+        ):
+            with pytest.raises(PydanticValidationError):
+                ImageGenerateInput(prompt="x", **bad)
+        assert ImageGenerateReference(sha256="c" * 64, strength=0.3).strength == 0.3

@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ─── Client configuration ───────────────────────────────────────────────────
 
@@ -1006,3 +1006,76 @@ def assert_same_embedding_space(a: Any, b: Any) -> str:
             "EMBEDDING_SPACE_MISMATCH",
         )
     return left
+
+
+# ── image:generate@v4 ───────────────────────────────────────────────────────
+#
+# Images from a prompt. Run it with ``client.capabilities.run(IMAGE_GENERATE, ...)``;
+# the images are artifacts. v4 adds an optional reference image, honoured only where
+# the app's images run on the local fleet: the render STARTS from it (img2img,
+# denoise = 1 - strength). About 0.3 borrows its palette, light and mood for a new
+# picture; about 0.6 keeps its composition. Anywhere else it is refused, never
+# ignored. Serialize with ``model_dump(by_alias=True, exclude_none=True)``.
+
+#: Capability slug, for ``client.capabilities.run(...)``.
+IMAGE_GENERATE = "image:generate"
+
+ImageGenerateSize = Literal["1024x1024", "1024x1792", "1792x1024", "512x512", "256x256"]
+ImageGenerateReferenceContentType = Literal["image/png", "image/jpeg", "image/webp"]
+
+
+class ImageGenerateInput(BaseModel):
+    """Input for ``image:generate@v4``. Send at most one reference source, always with ``reference_strength``."""
+
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    size: Optional[ImageGenerateSize] = None
+    quality: Optional[Literal["standard", "hd"]] = Field(
+        default=None, description="'hd' is refused on the fleet"
+    )
+    n: Optional[int] = Field(default=None, ge=1, le=4)
+    seed: Optional[int] = Field(default=None, ge=0, le=4_294_967_295)
+    model: Optional[str] = None
+    provider: Optional[str] = None
+    reference_image_url: Optional[str] = Field(
+        default=None, alias="referenceImageUrl", max_length=2048,
+        description="An http(s) link the platform copies into its own storage",
+    )
+    reference_image_artifact_id: Optional[str] = Field(
+        default=None, alias="referenceImageArtifactId", min_length=1, max_length=64,
+        description="An image artifact owned by the calling app",
+    )
+    reference_image_base64: Optional[str] = Field(
+        default=None, alias="referenceImageBase64", max_length=11_184_812,
+        description="Base64 of a PNG, JPEG or WebP, at most 8 MiB decoded",
+    )
+    reference_image_content_type: Optional[ImageGenerateReferenceContentType] = Field(
+        default=None, alias="referenceImageContentType",
+    )
+    reference_strength: Optional[float] = Field(
+        default=None, alias="referenceStrength", ge=0.05, le=0.95,
+        description="How much of the reference survives; required with a reference",
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    @model_validator(mode="after")
+    def _one_reference(self) -> "ImageGenerateInput":
+        sources = [v for v in (self.reference_image_url, self.reference_image_artifact_id, self.reference_image_base64) if v is not None]
+        if len(sources) > 1:
+            raise ValueError("send one reference image source")
+        if sources and self.reference_strength is None:
+            raise ValueError("reference_strength is required with a reference image")
+        if not sources and self.reference_strength is not None:
+            raise ValueError("reference_strength needs a reference image")
+        if (self.reference_image_base64 is None) != (self.reference_image_content_type is None):
+            raise ValueError("reference_image_base64 and reference_image_content_type go together")
+        return self
+
+
+class ImageGenerateReference(BaseModel):
+    """What a referenced image started from, as the runtime reported it (artifact ``metadata.reference``)."""
+
+    sha256: str
+    strength: float
+
+    model_config = ConfigDict(extra="allow")
