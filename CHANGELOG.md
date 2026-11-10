@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.0
+
+### Added
+
+- `client.get_video_routes()` for `GET /v1/model-router/video-routes`: which
+  video models a requirements-routed shot can land on, per route tier, and
+  whether the router picks each automatically or only when named. Types:
+  `VideoRouteTable`, `VideoRouteTableEntry`, `VideoRouteTierSummary`
+  (snake_case attributes over the camelCase wire; mirrors `@whizurai/types` 1.5.0).
+
 ## 2.4.0
 
 ### Added

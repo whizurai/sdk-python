@@ -370,3 +370,33 @@ class TestHealth:
     async def test_ping_false_on_error(self, client):
         client._make_request = AsyncMock(side_effect=NetworkError("down"))
         assert await client.ping() is False
+
+    async def test_get_video_routes(self, client):
+        client._make_request = AsyncMock(
+            return_value={
+                "version": 1,
+                "tierOrder": ["standard", "directed"],
+                "tiers": {
+                    "standard": {"defaultModel": None, "automaticModels": []},
+                    "directed": {
+                        "defaultModel": "bytedance/seedance-2-5",
+                        "automaticModels": ["bytedance/seedance-2-5"],
+                    },
+                },
+                "models": [
+                    {
+                        "model": "kling-4.0/reference-to-video",
+                        "routeTier": "standard",
+                        "lifecycle": "candidate",
+                        "reach": "explicit",
+                    }
+                ],
+            }
+        )
+        table = await client.get_video_routes()
+        client._make_request.assert_awaited_once_with("GET", "/v1/model-router/video-routes")
+        assert table.version == 1
+        assert table.tiers["directed"].default_model == "bytedance/seedance-2-5"
+        assert table.tiers["standard"].default_model is None
+        assert table.models[0].route_tier == "standard"
+        assert table.models[0].reach == "explicit"

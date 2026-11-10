@@ -84,6 +84,9 @@ from .types import (
     TimeoutError,
     TranscriptionPendingError,
     TranscriptionResponseFormat,
+    VideoRouteTable,
+    VideoRouteTableEntry,
+    VideoRouteTierSummary,
     TranscriptionSegment,
     Trigger,
     ValidationError,
@@ -96,7 +99,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -155,6 +158,9 @@ __all__ = [
     "SpeechWarning",
     "SpeechWordTiming",
     "StatusResponse",
+    "VideoRouteTable",
+    "VideoRouteTableEntry",
+    "VideoRouteTierSummary",
     "SubjectReference",
     "TimeoutError",
     "TranscriptionPendingError",

@@ -363,6 +363,48 @@ class StatusResponse(BaseModel):
     timestamp: Optional[datetime] = None
 
 
+# ─── Video route table (GET /v1/model-router/video-routes) ─────────────────
+
+
+class VideoRouteTableEntry(BaseModel):
+    """A video model a requirements-routed request can reach.
+
+    ``reach`` is ``automatic`` when the router may pick it with no model named
+    (lifecycle production / validated) and ``explicit`` when only a request
+    naming it reaches it (candidate).
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    model: str
+    route_tier: Literal["standard", "directed"] = Field(alias="routeTier")
+    lifecycle: Literal["candidate", "validated", "production"]
+    reach: Literal["automatic", "explicit"]
+
+
+class VideoRouteTierSummary(BaseModel):
+    """A tier's automatic models; ``default_model`` is None when there are none."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    default_model: Optional[str] = Field(alias="defaultModel")
+    automatic_models: List[str] = Field(alias="automaticModels")
+
+
+class VideoRouteTable(BaseModel):
+    """Which video models each route tier can land on. Mirrors ``VideoRouteTable`` in @whizurai/types.
+
+    Check ``version`` before trusting the rest.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    version: int
+    tier_order: List[Literal["standard", "directed"]] = Field(alias="tierOrder")
+    tiers: Dict[str, VideoRouteTierSummary]
+    models: List[VideoRouteTableEntry]
+
+
 # ─── Error hierarchy ────────────────────────────────────────────────────────
 
 
