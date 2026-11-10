@@ -40,6 +40,7 @@ from .types import (
     RECOMMENDED_RERANK_MODEL,
     RERANK_MAX_DOCUMENTS,
     SPEECH_SYNTHESIZE,
+    IMAGE_GENERATE,
     VIDEO_MULTI_SHOT,
     APIError,
     Artifact,
@@ -75,6 +76,8 @@ from .types import (
     SpeechEngine,
     SpeechPriority,
     SpeechSynthesizeInput,
+    ImageGenerateInput,
+    ImageGenerateReference,
     SpeechSynthesizeResult,
     SpeechTimingProvenance,
     SpeechWarning,
@@ -99,7 +102,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.5.0"
+__version__ = "2.6.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -110,6 +113,7 @@ __all__ = [
     "RECOMMENDED_RERANK_MODEL",
     "RERANK_MAX_DOCUMENTS",
     "SPEECH_SYNTHESIZE",
+    "IMAGE_GENERATE",
     "VIDEO_MULTI_SHOT",
     "APIError",
     # Artifacts
@@ -153,6 +157,8 @@ __all__ = [
     "SpeechEngine",
     "SpeechPriority",
     "SpeechSynthesizeInput",
+    "ImageGenerateInput",
+    "ImageGenerateReference",
     "SpeechSynthesizeResult",
     "SpeechTimingProvenance",
     "SpeechWarning",

@@ -58,6 +58,29 @@ Plus `client.health_check()`, `client.get_status()`, `client.ping()`, and the
 direct-inference methods `client.embed()` / `client.rerank()` /
 `client.transcribe()` below.
 
+## Image generation with a reference image
+
+`image:generate@v4` takes an optional reference image. Where your app's images
+run on the local fleet, the render starts from it (img2img): about 0.3 borrows
+its palette, light and mood for a new picture, about 0.6 keeps its composition.
+Anywhere else the platform refuses it rather than ignore it.
+
+```python
+from whizurai import IMAGE_GENERATE, ImageGenerateInput
+
+body = ImageGenerateInput(
+    prompt="a cozy bar on trivia night, warm light, no people, no text",
+    reference_image_base64=base64.b64encode(data).decode(),
+    reference_image_content_type="image/jpeg",
+    reference_strength=0.3,
+).model_dump(by_alias=True, exclude_none=True)
+run = client.capabilities.run(IMAGE_GENERATE, body)
+```
+
+The image artifact's `metadata.reference` (`{sha256, strength}`) is what the
+render started from; a run whose runtime did not confirm it fails
+`imagegen/reference_not_applied`.
+
 ## Speech synthesis
 
 `speech:synthesize` is a capability: run it with `client.capabilities.run` and
