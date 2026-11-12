@@ -1,14 +1,13 @@
 """Tests for client.outcomes (mocked HTTP)."""
 
 import re
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import whizurai
 from whizurai import APIError, ClientConfig, OutcomeRunEvent, WhizuraiClient
 from whizurai.client import SDK_VERSION
-
-import whizurai
 
 
 @pytest.fixture
@@ -78,17 +77,18 @@ async def test_preview_sends_no_client_action_id(client):
     assert client._make_request.call_args.kwargs["data"] == {"command": command}
 
 
-async def test_state_changed_carries_workspace(client, monkeypatch):
-    class Resp:
-        status_code = 409
-        content = b"{}"
-        headers = {}
-        reason_phrase = "Conflict"
-
-        def json(self):
-            return {"error": "STATE_CHANGED", "message": "Refresh.", "workspace": {"controlRevision": 4}}
-
-    client.client.request = AsyncMock(return_value=Resp())
+async def test_state_changed_carries_workspace(client):
+    resp = MagicMock()
+    resp.status_code = 409
+    resp.content = b"{}"
+    resp.headers = {}
+    resp.reason_phrase = "Conflict"
+    resp.json.return_value = {
+        "error": "STATE_CHANGED",
+        "message": "Refresh.",
+        "workspace": {"controlRevision": 4},
+    }
+    client.client.request = AsyncMock(return_value=resp)
     with pytest.raises(APIError) as info:
         await client.outcomes.command("or_1", {"action": "retry", "invocationId": "inv_1"})
     assert info.value.status_code == 409
