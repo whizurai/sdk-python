@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.7.0
+
+### Added
+
+- `client.outcomes` (`OutcomesResource`) for interactive outcome runs
+  (whizai-platform#905): `run(slug, inputs, execution_policy=..., app_id=...,
+  variant=..., idempotency_key=..., customer_id=...)`, `get_run(id)`
+  (`OutcomeRun.interactive`), `workspace(id)`, `command(id, command,
+  client_action_id=None)` (UUID4 generated when omitted, none sent for a
+  `preview` command), `invocation(id, invocation_id)` and `events(id)`.
+  Types: `OutcomeExecutionPolicy`, `OutcomeRunHandle`, `OutcomeRun`,
+  `OutcomeRunEvent` (mirroring `@whizurai/types` 1.9.0). The workspace,
+  command response and invocation detail are plain dicts.
+
+### Fixed
+
+- `SDK_VERSION` (the `User-Agent` version) read 2.5.0 in 2.6.0; it now matches
+  the package version, and a test keeps them equal.
+
 ## 2.6.0
 
 ### Added
