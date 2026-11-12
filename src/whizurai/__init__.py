@@ -28,6 +28,7 @@ Features:
 from .client import (
     ArtifactsResource,
     CapabilitiesResource,
+    OutcomesResource,
     RunsResource,
     TriggersResource,
     WhizuraiClient,
@@ -69,6 +70,10 @@ from .types import (
     ListTriggersResponse,
     NetworkError,
     NotFoundError,
+    OutcomeExecutionPolicy,
+    OutcomeRun,
+    OutcomeRunEvent,
+    OutcomeRunHandle,
     RateLimitError,
     RerankResponse,
     RerankResult,
@@ -102,7 +107,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.6.0"
+__version__ = "2.7.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -148,6 +153,11 @@ __all__ = [
     "ListTriggersResponse",
     "NetworkError",
     "NotFoundError",
+    "OutcomeExecutionPolicy",
+    "OutcomeRun",
+    "OutcomeRunEvent",
+    "OutcomeRunHandle",
+    "OutcomesResource",
     "RateLimitError",
     "RerankResponse",
     "RerankResult",

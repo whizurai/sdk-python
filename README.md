@@ -53,10 +53,46 @@ asyncio.run(main())
 | `client.runs` | `get`, `list`, `logs`, `artifacts`, `poll_until_done` |
 | `client.artifacts` | `list`, `get` |
 | `client.triggers` | `list`, `get`, `create`, `update`, `delete`, `test` |
+| `client.outcomes` | `run`, `get_run`, `workspace`, `command`, `invocation`, `events` |
 
 Plus `client.health_check()`, `client.get_status()`, `client.ping()`, and the
 direct-inference methods `client.embed()` / `client.rerank()` /
 `client.transcribe()` below.
+
+## Interactive outcome runs
+
+An interactive outcome runs as independent item invocations that a person (or
+a policy) authorizes one command at a time. `execution_policy="review"`
+authorizes only the first operation; `"automatic"` runs everything within the
+reservation. Platform doc: whizai-platform `docs/interactive-outcome-runs.md`.
+
+```python
+handle = await client.outcomes.run(
+    "interactive-five-shot-story", {"idea": "a fox learns to fly"}, execution_policy="review"
+)
+ws = await client.outcomes.workspace(handle.id)  # dict, camelCase keys
+shot = ws["items"][0]
+
+out = await client.outcomes.command(handle.id, {
+    "action": "generate",
+    "operation": "image",
+    "targets": [{"itemId": shot["id"], "sourceRevisionId": shot["description"]["chosen"]["id"]}],
+})  # client_action_id generated; pass your own to make a retry replay
+
+preview = await client.outcomes.command(
+    handle.id,
+    {"action": "finish_remaining", "expectedControlRevision": out["workspace"]["controlRevision"], "preview": True},
+)  # previews send no client_action_id
+
+detail = await client.outcomes.invocation(handle.id, out["result"]["invocationIds"][0])
+trail = await client.outcomes.events(handle.id)  # List[OutcomeRunEvent], oldest first
+```
+
+A stale command raises `APIError` with `status_code == 409` (`STATE_CHANGED`
+and friends); `err.response["workspace"]` is the current workspace. The
+command shapes are the `InteractiveCommand` union in `@whizurai/types`.
+Not yet in this SDK: `assets`, `list_runs` and `poll_until_done` for outcome
+runs (the JS SDK has them).
 
 ## Image generation with a reference image
 

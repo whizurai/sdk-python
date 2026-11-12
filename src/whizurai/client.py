@@ -1,16 +1,17 @@
 """
 Whizurai Python SDK Client
 
-Capability-first async client for the Whizurai Platform. The client exposes four
-resources — ``capabilities``, ``runs``, ``artifacts``, ``triggers`` — mirroring
-the platform's public REST surface (``/v1/capabilities/:id/execute``,
-``/v1/workflow-runs``, ``/v1/artifacts``, ``/v1/triggers``).
+Capability-first async client for the Whizurai Platform. The client exposes five
+resources — ``capabilities``, ``runs``, ``artifacts``, ``triggers``, ``outcomes`` —
+mirroring the platform's public REST surface (``/v1/capabilities/:id/execute``,
+``/v1/workflow-runs``, ``/v1/artifacts``, ``/v1/triggers``, ``/v1/outcomes``).
 """
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Union
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from httpx import ConnectError, HTTPError, TimeoutException
@@ -35,6 +36,10 @@ from .types import (
     ListTriggersResponse,
     NetworkError,
     NotFoundError,
+    OutcomeExecutionPolicy,
+    OutcomeRun,
+    OutcomeRunEvent,
+    OutcomeRunHandle,
     RateLimitError,
     RerankResponse,
     RerankResult,
@@ -51,7 +56,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.5.0"
+SDK_VERSION = "2.7.0"
 
 
 class WhizuraiClient:
@@ -95,6 +100,7 @@ class WhizuraiClient:
         self.runs = RunsResource(self)
         self.artifacts = ArtifactsResource(self)
         self.triggers = TriggersResource(self)
+        self.outcomes = OutcomesResource(self)
 
         logger.info("Initialized Whizurai client for %s", self.base_url)
 
@@ -955,3 +961,89 @@ def create_client_from_env() -> WhizuraiClient:
     return create_client(
         ClientConfig(api_key=api_key, base_url=base_url, inference_base_url=inference_base_url)
     )
+
+
+class OutcomesResource:
+    """Run a published outcome by slug and drive an interactive item run.
+
+    Interactive runs (whizai-platform ``docs/interactive-outcome-runs.md``) are
+    read with :meth:`workspace` and changed one idempotent :meth:`command` at a
+    time. A stale command raises :class:`APIError` (409, e.g. ``STATE_CHANGED``)
+    whose ``response["workspace"]`` is the current workspace.
+    """
+
+    def __init__(self, client: WhizuraiClient):
+        self._client = client
+
+    @staticmethod
+    def _run_path(run_id: str, suffix: str = "") -> str:
+        return f"/v1/outcomes/runs/{quote(run_id, safe='')}{suffix}"
+
+    async def run(
+        self,
+        slug: str,
+        inputs: Dict[str, Any],
+        *,
+        execution_policy: Optional[OutcomeExecutionPolicy] = None,
+        app_id: Optional[str] = None,
+        variant: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        customer_id: Optional[str] = None,
+    ) -> OutcomeRunHandle:
+        """Start a run of the published outcome ``slug`` (``POST /v1/outcomes/{slug}/runs``)."""
+        body: Dict[str, Any] = {"inputs": inputs}
+        for key, value in (
+            ("executionPolicy", execution_policy),
+            ("appId", app_id),
+            ("variant", variant),
+            ("idempotencyKey", idempotency_key),
+            ("customerId", customer_id),
+        ):
+            if value is not None:
+                body[key] = value
+        data = await self._client._make_request(
+            "POST", f"/v1/outcomes/{quote(slug, safe='')}/runs", data=body
+        )
+        return OutcomeRunHandle.model_validate(data["outcomeRun"])
+
+    async def get_run(self, run_id: str) -> OutcomeRun:
+        """One run's status (``GET /v1/outcomes/runs/{id}``)."""
+        data = await self._client._make_request("GET", self._run_path(run_id))
+        return OutcomeRun.model_validate(data["outcomeRun"])
+
+    async def workspace(self, run_id: str) -> Dict[str, Any]:
+        """Server-derived state of an interactive run (``GET .../workspace``), camelCase keys."""
+        return await self._client._make_request("GET", self._run_path(run_id, "/workspace"))
+
+    async def command(
+        self,
+        run_id: str,
+        command: Dict[str, Any],
+        client_action_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send one command (``POST .../commands``); returns ``{"result", "workspace"}``.
+
+        ``client_action_id`` is generated (UUID4) when omitted, except for a
+        preview (``command["preview"] is True``), which takes none. Retries of
+        this call reuse the same id, so the platform replays instead of acting
+        twice.
+        """
+        if client_action_id is None and command.get("preview") is not True:
+            client_action_id = str(uuid.uuid4())
+        body: Dict[str, Any] = {"command": command}
+        if client_action_id is not None:
+            body["clientActionId"] = client_action_id
+        return await self._client._make_request(
+            "POST", self._run_path(run_id, "/commands"), data=body
+        )
+
+    async def invocation(self, run_id: str, invocation_id: str) -> Dict[str, Any]:
+        """One attempt: sources, Whiz-resolved input, steps, acceptance, cost (camelCase keys)."""
+        return await self._client._make_request(
+            "GET", self._run_path(run_id, f"/invocations/{quote(invocation_id, safe='')}")
+        )
+
+    async def events(self, run_id: str) -> List[OutcomeRunEvent]:
+        """The durable event trail, oldest first, at most 1000 (``GET .../events``)."""
+        data = await self._client._make_request("GET", self._run_path(run_id, "/events"))
+        return [OutcomeRunEvent.model_validate(e) for e in (data or {}).get("events", [])]

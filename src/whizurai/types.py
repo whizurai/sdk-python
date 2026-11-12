@@ -405,6 +405,69 @@ class VideoRouteTable(BaseModel):
     models: List[VideoRouteTableEntry]
 
 
+# ─── Outcome runs (/v1/outcomes) ────────────────────────────────────────────
+#
+# Mirrors ``@whizurai/types/outcomes`` 1.9.0. Only what interactive item runs
+# need: start a run, read it, and the event trail. The workspace, command
+# response and invocation detail are returned as plain dicts with the wire's
+# camelCase keys (their shape: ``InteractiveWorkspace`` and friends in
+# @whizurai/types, single source whizai-platform
+# packages/capabilities/src/interactive/workspace.ts).
+
+OutcomeExecutionPolicy = Literal["automatic", "review"]
+"""``review`` authorizes only the first operation; later work needs a command."""
+
+
+class OutcomeRunHandle(BaseModel):
+    """``outcomeRun`` of ``POST /v1/outcomes/{slug}/runs`` (202 new, 200 idempotent replay)."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    id: str
+    status: str
+    outcome_slug: Optional[str] = Field(default=None, alias="outcomeSlug")
+    outcome_version: Optional[str] = Field(default=None, alias="outcomeVersion")
+    variant_slug: Optional[str] = Field(default=None, alias="variantSlug")
+    estimated_acu: Optional[int] = Field(default=None, alias="estimatedACU")
+    started_at: Optional[str] = Field(default=None, alias="startedAt")
+    status_url: Optional[str] = Field(default=None, alias="statusUrl")
+
+
+class OutcomeRun(BaseModel):
+    """``outcomeRun`` of ``GET /v1/outcomes/runs/{id}``. ``interactive`` marks an item run."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    id: str
+    status: str
+    interactive: bool = False
+    outcome_slug: Optional[str] = Field(default=None, alias="outcomeSlug")
+    outcome_version: Optional[str] = Field(default=None, alias="outcomeVersion")
+    variant_slug: Optional[str] = Field(default=None, alias="variantSlug")
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = Field(default=None, alias="errorMessage")
+    error_code: Optional[str] = Field(default=None, alias="errorCode")
+    estimated_acu: Optional[int] = Field(default=None, alias="estimatedACU")
+    acu_consumed: Optional[int] = Field(default=None, alias="acuConsumed")
+    started_at: Optional[str] = Field(default=None, alias="startedAt")
+    completed_at: Optional[str] = Field(default=None, alias="completedAt")
+
+
+class OutcomeRunEvent(BaseModel):
+    """One entry of an interactive run's durable trail (``GET /v1/outcomes/runs/{id}/events``)."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    id: str
+    type: str
+    actor_type: str = Field(alias="actorType")
+    actor_id: Optional[str] = Field(default=None, alias="actorId")
+    item_id: Optional[str] = Field(default=None, alias="itemId")
+    data: Optional[Dict[str, Any]] = None
+    created_at: str = Field(alias="createdAt")
+
+
 # ─── Error hierarchy ────────────────────────────────────────────────────────
 
 
