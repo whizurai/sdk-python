@@ -57,6 +57,7 @@ from .types import (
     EmbeddingSpaceError,
     EmbeddingsResponse,
     ExecuteCapabilityResponse,
+    ExecutionPolicy,
     GenerateTextChoice,
     GenerateTextResponse,
     HealthResponse,
@@ -107,7 +108,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.7.0"
+__version__ = "2.8.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -139,6 +140,7 @@ __all__ = [
     "EmbeddingSpaceError",
     "EmbeddingsResponse",
     "ExecuteCapabilityResponse",
+    "ExecutionPolicy",
     # Health and status
     "GenerateTextChoice",
     "GenerateTextResponse",

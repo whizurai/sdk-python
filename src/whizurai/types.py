@@ -951,6 +951,18 @@ class AudioTranscriptionResponse(BaseModel):
 # Mirrors @whizurai/types/gateway-inference; keep the two in lockstep.
 
 
+ExecutionPolicy = Literal["fleet-required", "fleet-preferred", "fleet-disabled", "fleet-then-hosted"]
+"""Where a text request may run (``metadata["executionPolicy"]`` / ``x-execution-policy``).
+
+``fleet-then-hosted`` runs on the fleet as ``fleet-required``. After a fleet
+decline, an app opted in on WhizAI's side may have an ``interactive``,
+non-streamed text request answered by a hosted model; ``execution["execution"]``
+is then ``"hosted"`` with ``provider``, ``served_model``,
+``fleet_declined_reason``, ``hosted_fallback`` and ``cost_usd`` (``None`` when
+unknown). For any other app or class it is exactly ``fleet-required``.
+"""
+
+
 class GenerateTextChoice(BaseModel):
     """One choice of ``POST /v1/generate/text``."""
 
@@ -975,8 +987,10 @@ class GenerateTextResponse(BaseModel):
     provider: Optional[str] = None
     choices: List[GenerateTextChoice]
     usage: Optional[Dict[str, int]] = None
-    #: Where it executed (``execution`` fleet|direct, ``runtime``, ``fleet_job_id``).
-    #: ``None`` means unattributed: do not infer a tier from its absence.
+    #: Where it executed (``execution`` fleet|direct|hosted, ``runtime``, ``fleet_job_id``;
+    #: a hosted answer adds ``provider``, ``served_model``, ``fleet_declined_reason``,
+    #: ``hosted_fallback``, ``cost_usd``). ``None`` means unattributed: do not infer a
+    #: tier from its absence.
     execution: Optional[Dict[str, Any]] = None
 
 
