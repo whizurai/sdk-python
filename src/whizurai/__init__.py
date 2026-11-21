@@ -108,7 +108,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.8.0"
+__version__ = "2.9.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
