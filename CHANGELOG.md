@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.8.0
+
+### Added
+
+- `ExecutionPolicy` (`Literal`), including `"fleet-then-hosted"` (whizai-platform#993):
+  the fleet first, as `fleet-required`; after a fleet decline, an app opted in on WhizAI's
+  side may have an `interactive` text request answered by a hosted model. Send it as
+  `generate_text(..., metadata={"executionPolicy": "fleet-then-hosted", "priority": "interactive"})`.
+- `GenerateTextResponse.execution` documents `execution: "hosted"` and the hosted attribution
+  fields. Mirrors `@whizurai/types` 1.10.0.
+
 ## 2.7.0
 
 ### Added

@@ -70,6 +70,7 @@ from .types import (
     ListTriggersResponse,
     NetworkError,
     NotFoundError,
+    ExecutionPolicy,
     OutcomeExecutionPolicy,
     OutcomeRun,
     OutcomeRunEvent,
@@ -107,7 +108,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.7.0"
+__version__ = "2.8.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -153,6 +154,7 @@ __all__ = [
     "ListTriggersResponse",
     "NetworkError",
     "NotFoundError",
+    "ExecutionPolicy",
     "OutcomeExecutionPolicy",
     "OutcomeRun",
     "OutcomeRunEvent",
