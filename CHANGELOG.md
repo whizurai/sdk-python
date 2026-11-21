@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.0
+
+### Changed
+
+- Docs: `fleet-then-hosted` is honoured by `describe_image()` under its own opt-in
+  (whizai-platform#996); hosted attribution adds `provider_credits` and a hosted provider may be
+  `kieai` (Gemini through kie.ai, whizai-platform#995). Mirrors `@whizurai/types` 1.11.0.
+
 ## 2.8.0
 
 ### Added

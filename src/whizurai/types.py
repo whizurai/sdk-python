@@ -959,7 +959,8 @@ decline, an app opted in on WhizAI's side may have an ``interactive``,
 non-streamed text request answered by a hosted model; ``execution["execution"]``
 is then ``"hosted"`` with ``provider``, ``served_model``,
 ``fleet_declined_reason``, ``hosted_fallback`` and ``cost_usd`` (``None`` when
-unknown). For any other app or class it is exactly ``fleet-required``.
+unknown). An opt-in may also name ``production``, and ``describe_image`` honours it
+under its own opt-in. For any other app or class it is exactly ``fleet-required``.
 """
 
 
@@ -989,7 +990,8 @@ class GenerateTextResponse(BaseModel):
     usage: Optional[Dict[str, int]] = None
     #: Where it executed (``execution`` fleet|direct|hosted, ``runtime``, ``fleet_job_id``;
     #: a hosted answer adds ``provider``, ``served_model``, ``fleet_declined_reason``,
-    #: ``hosted_fallback``, ``cost_usd``). ``None`` means unattributed: do not infer a
+    #: ``hosted_fallback``, ``cost_usd``, ``provider_credits``; ``provider`` is e.g.
+    #: ``openai`` or ``kieai``). ``None`` means unattributed: do not infer a
     #: tier from its absence.
     execution: Optional[Dict[str, Any]] = None
 
@@ -1008,7 +1010,10 @@ class DescribeImageResponse(BaseModel):
     #: Wall-clock seconds.
     response_time: Optional[float] = Field(None, alias="responseTime")
     usage: Optional[Dict[str, int]] = None
-    #: Execution attribution (endpoint, runtime, fleet job, worker) where known.
+    #: Execution attribution (endpoint, runtime, fleet job, worker) where known. With
+    #: ``metadata={"executionPolicy": "fleet-then-hosted"}`` from an app opted in on
+    #: WhizAI's side (``HOSTED_VISION_FALLBACK_BY_APP``), a hosted answer carries the same
+    #: fields as ``GenerateTextResponse.execution`` and ``provider``/``model`` name it.
     metadata: Optional[Dict[str, Any]] = None
 
 
