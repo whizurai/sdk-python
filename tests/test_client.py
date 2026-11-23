@@ -222,6 +222,29 @@ class TestArtifacts:
         assert art.type == "image"
 
 
+class TestGetCapabilityRun:
+    async def test_get_run_reads_capability_run_route_and_unwraps(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(
+                200, {"run": {"id": "cr1", "status": "succeeded", "result": {"kind": "coding"}}}
+            )
+        )
+        run = await client.capabilities.get_run("cr1")
+        kwargs = client.client.request.await_args.kwargs
+        assert kwargs["method"] == "GET"
+        assert kwargs["url"] == "/v1/capabilities/capability-runs/cr1"
+        assert run.id == "cr1"
+        assert run.status == "succeeded"
+
+    async def test_get_run_encodes_id_and_accepts_unwrapped(self, client):
+        client.client.request = AsyncMock(
+            return_value=fake_response(200, {"id": "a/b", "status": "running"})
+        )
+        run = await client.capabilities.get_run("a/b")
+        assert client.client.request.await_args.kwargs["url"] == "/v1/capabilities/capability-runs/a%2Fb"
+        assert run.status == "running"
+
+
 class TestCancel:
     async def test_cancel_posts_to_capability_run_route(self, client):
         client.client.request = AsyncMock(

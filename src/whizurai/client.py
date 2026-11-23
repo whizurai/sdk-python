@@ -56,7 +56,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.10.0"
+SDK_VERSION = "2.11.0"
 
 
 class WhizuraiClient:
@@ -669,6 +669,21 @@ class CapabilitiesResource:
             headers=headers,
         )
         return ExecuteCapabilityResponse(**data).run
+
+    async def get_run(self, run_id: str) -> Run:
+        """Fetch a capability run by the id :meth:`run` returned.
+
+        Calls ``GET /v1/capabilities/capability-runs/:runId``. Poll this for the
+        run's status and ``result``. ``client.runs.get`` reads WORKFLOW runs and
+        answers 404 for a capability-run id; the underlying workflow run's id,
+        when one exists, is this run's ``workflowRunId``.
+        """
+        data = await self._client._make_request(
+            "GET", f"/v1/capabilities/capability-runs/{quote(run_id, safe='')}"
+        )
+        if isinstance(data, dict) and isinstance(data.get("run"), dict):
+            data = data["run"]
+        return Run(**data)
 
     async def cancel(self, run_id: str) -> Run:
         """Cancel a capability run.
