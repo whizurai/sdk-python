@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.9.1
+
+- Add the canonical run-list capability slug selector, matching the JS SDK and CLI.
+
 ## 2.9.0
 
 ### Changed
