@@ -177,8 +177,10 @@ class TestRuns:
 
     async def test_list(self, client):
         client._make_request = AsyncMock(return_value={"runs": [{"id": "r1", "status": "running"}]})
-        resp = await client.runs.list(limit=3)
+        resp = await client.runs.list(limit=3, capability_slug="image:generate")
         assert resp.runs[0].id == "r1"
+        assert client._make_request.call_args[0] == ("GET", "/v1/workflow-runs")
+        assert client._make_request.call_args[1]["params"]["capabilitySlug"] == "image:generate"
 
     async def test_logs(self, client):
         client._make_request = AsyncMock(return_value={"logs": [{"message": "hi"}]})

@@ -56,7 +56,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.9.0"
+SDK_VERSION = "2.9.1"
 
 
 class WhizuraiClient:
@@ -721,10 +721,12 @@ class RunsResource:
         status: Optional[str] = None,
         limit: Optional[int] = None,
         cursor: Optional[str] = None,
+        capability_slug: Optional[str] = None,
     ) -> ListRunsResponse:
         """List runs, optionally filtered by capability/status."""
         params = {
             "capabilityId": capability_id,
+            "capabilitySlug": capability_slug,
             "status": status,
             "limit": limit,
             "cursor": cursor,
