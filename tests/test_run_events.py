@@ -65,7 +65,6 @@ async def test_a_refusal_is_not_retried():
 
 async def test_gives_up_after_max_reconnects():
     client, seen = make_client([(502, "")])
-    with patch("whizurai.client.asyncio.sleep", new=AsyncMock()):
-        with pytest.raises(NetworkError):
-            await collect(client.capabilities.run_events("cr1", max_reconnects=2))
+    with patch("whizurai.client.asyncio.sleep", new=AsyncMock()), pytest.raises(NetworkError):
+        await collect(client.capabilities.run_events("cr1", max_reconnects=2))
     assert len(seen) == 3
