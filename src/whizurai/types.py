@@ -951,7 +951,7 @@ class AudioTranscriptionResponse(BaseModel):
 # Mirrors @whizurai/types/gateway-inference; keep the two in lockstep.
 
 
-ExecutionPolicy = Literal["fleet-required", "fleet-preferred", "fleet-disabled", "fleet-then-hosted"]
+ExecutionPolicy = Literal["fleet-required", "fleet-preferred", "fleet-disabled", "fleet-then-hosted", "hosted-first"]
 """Where a text request may run (``metadata["executionPolicy"]`` / ``x-execution-policy``).
 
 ``fleet-then-hosted`` runs on the fleet as ``fleet-required``. After a fleet

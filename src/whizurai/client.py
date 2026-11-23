@@ -56,7 +56,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.9.1"
+SDK_VERSION = "2.10.0"
 
 
 class WhizuraiClient:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.10.0
+
+### Added
+
+- `ExecutionPolicy` gains `"hosted-first"` (whizai-platform#1040): under the same opt-in as
+  `fleet-then-hosted`, the app's hosted chain answers first and the fleet runs only if it does not.
+
 ## 2.9.1
 
 - Add the canonical run-list capability slug selector, matching the JS SDK and CLI.
