@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.0
+
+### Added
+
+- `capabilities.get_run(run_id)`: reads a capability run
+  (`GET /v1/capabilities/capability-runs/:runId`) by the id `capabilities.run()` returned.
+  `runs.get()` reads workflow runs and answers 404 for that id. Matches sdk-js 3.11.0.
+
 ## 2.10.0
 
 ### Added
