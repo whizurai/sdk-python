@@ -8,9 +8,10 @@ mirroring the platform's public REST surface (``/v1/capabilities/:id/execute``,
 """
 
 import asyncio
+import json
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
@@ -56,7 +57,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.11.0"
+SDK_VERSION = "2.12.0"
 
 
 class WhizuraiClient:
@@ -684,6 +685,86 @@ class CapabilitiesResource:
         if isinstance(data, dict) and isinstance(data.get("run"), dict):
             data = data["run"]
         return Run(**data)
+
+    async def run_events(
+        self,
+        run_id: str,
+        after: Optional[int] = None,
+        max_reconnects: int = 5,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Follow a capability run's live events (Server-Sent Events).
+
+        Calls ``GET /v1/capabilities/capability-runs/:runId/events`` and yields,
+        in order, ``{"type": "chunk", "seq": n, "chunks": [...]}`` for everything
+        the worker streams (for a live native coding turn: ``coding_progress`` and
+        ``coding_file`` chunks), then one ``{"type": "end", "status": ...}``. A
+        dropped connection resumes after the last ``seq`` received
+        (``Last-Event-ID``), so no chunk is delivered twice or skipped. 4xx
+        refusals are not retried. Matches sdk-js ``capabilities.runEvents``.
+        """
+        last = -1 if after is None else int(after)
+        failures = 0
+        path = f"/v1/capabilities/capability-runs/{quote(run_id, safe='')}/events"
+        while True:
+            ended = False
+            try:
+                headers = {"Accept": "text/event-stream"}
+                params: Dict[str, Any] = {}
+                if last >= 0:
+                    headers["Last-Event-ID"] = str(last)
+                    params["after"] = last
+                async with self._client.client.stream(
+                    "GET", path, headers=headers, params=params or None,
+                    timeout=httpx.Timeout(None, connect=10.0),
+                ) as response:
+                    if response.status_code in (401, 403):
+                        raise AuthenticationError("Authentication failed - check your API key")
+                    if response.status_code == 404:
+                        raise NotFoundError("Resource not found")
+                    if 400 <= response.status_code < 500 and response.status_code not in (408, 429):
+                        raise ValidationError(f"Run events refused (HTTP {response.status_code})")
+                    if response.status_code >= 300:
+                        raise APIError(f"Run events failed (HTTP {response.status_code})", response.status_code)
+                    event, data = "", []
+                    async for line in response.aiter_lines():
+                        if line == "":
+                            if data:
+                                body = json.loads("\n".join(data))
+                                if event == "chunk":
+                                    seq = int(body["seq"])
+                                    if seq > last:
+                                        last = seq
+                                        failures = 0
+                                        yield {"type": "chunk", "seq": seq, "chunks": list(body.get("chunks") or [])}
+                                elif event == "end":
+                                    ended = True
+                                    yield {"type": "end", "status": str(body.get("status"))}
+                                    return
+                            event, data = "", []
+                            continue
+                        if line.startswith(":"):
+                            continue
+                        field, _, value = line.partition(":")
+                        if value.startswith(" "):
+                            value = value[1:]
+                        if field == "event":
+                            event = value
+                        elif field == "data":
+                            data.append(value)
+            except (AuthenticationError, NotFoundError, ValidationError):
+                raise
+            except (httpx.HTTPError, APIError) as error:
+                failures += 1
+                if failures > max_reconnects:
+                    raise NetworkError(f"Run event stream failed: {error}") from error
+                await asyncio.sleep(min(0.5 * 2 ** (failures - 1), 8.0))
+                continue
+            if ended:
+                return
+            failures += 1
+            if failures > max_reconnects:
+                raise NetworkError("Run event stream closed before the run ended")
+            await asyncio.sleep(min(0.5 * 2 ** (failures - 1), 8.0))
 
     async def cancel(self, run_id: str) -> Run:
         """Cancel a capability run.

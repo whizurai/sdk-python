@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.12.0
+
+### Added
+
+- `capabilities.run_events(run_id, after=None, max_reconnects=5)`: an async iterator over a
+  capability run's live events (`GET /v1/capabilities/capability-runs/:runId/events`, SSE).
+  Yields `{"type": "chunk", "seq", "chunks"}` in order, then `{"type": "end", "status"}`;
+  resumes after the last `seq` on a dropped connection; 4xx refusals are not retried.
+  Matches sdk-js 3.12.0 `capabilities.runEvents`.
+
 ## 2.11.0
 
 ### Added
