@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.14.0
+
+### Added
+
+- `outcomes.poll_until_done(run_id, interval=2.0, timeout=600.0) -> OutcomeRun`: polls
+  `GET /v1/outcomes/runs/{id}` until the run is `SUCCEEDED`, `FAILED` or `CANCELLED`.
+  A `FAILED` run is returned, not raised; `TimeoutError` when `timeout` seconds pass
+  first. Matches sdk-js `outcomes.pollUntilDone`.
+
 ## 2.13.0
 
 ### Added

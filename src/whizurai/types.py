@@ -520,6 +520,11 @@ class OutcomeRun(BaseModel):
     completed_at: Optional[str] = Field(default=None, alias="completedAt")
 
 
+#: Outcome run statuses at which the run is finished (matches sdk-js
+#: ``TERMINAL_OUTCOME_RUN_STATUSES``). ``FAILED`` is terminal, not an error.
+TERMINAL_OUTCOME_RUN_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
+
+
 class OutcomeRunEvent(BaseModel):
     """One entry of an interactive run's durable trail (``GET /v1/outcomes/runs/{id}/events``)."""
 
