@@ -49,6 +49,10 @@ from .types import (
     AuthenticationError,
     Capability,
     CapabilityStatus,
+    CatalogLimits,
+    CatalogModel,
+    CatalogOperationView,
+    CatalogPrice,
     ClientConfig,
     DescribeImageResponse,
     DryRunResult,
@@ -69,6 +73,7 @@ from .types import (
     ListCapabilitiesResponse,
     ListRunsResponse,
     ListTriggersResponse,
+    ModelCatalog,
     NetworkError,
     NotFoundError,
     OutcomeExecutionPolicy,
@@ -108,7 +113,7 @@ from .types import (
     total_duration_seconds,
 )
 
-__version__ = "2.12.0"
+__version__ = "2.13.0"
 __author__ = "Whizurai Labs"
 __email__ = "dev@whizurai.com"
 
@@ -131,6 +136,10 @@ __all__ = [
     # Capabilities
     "Capability",
     "CapabilityStatus",
+    "CatalogLimits",
+    "CatalogModel",
+    "CatalogOperationView",
+    "CatalogPrice",
     # Configuration
     "ClientConfig",
     "DescribeImageResponse",
@@ -153,6 +162,7 @@ __all__ = [
     "ListCapabilitiesResponse",
     "ListRunsResponse",
     "ListTriggersResponse",
+    "ModelCatalog",
     "NetworkError",
     "NotFoundError",
     "OutcomeExecutionPolicy",

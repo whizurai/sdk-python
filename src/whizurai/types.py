@@ -405,6 +405,72 @@ class VideoRouteTable(BaseModel):
     models: List[VideoRouteTableEntry]
 
 
+# ─── Model catalogue (GET /v1/model-router/catalog) ────────────────────────
+
+CatalogOperation = Literal["image_generate", "image_edit"]
+
+
+class CatalogPrice(BaseModel):
+    """Provider price at the default size and quality the route sends, with the day it was read.
+
+    ``usd`` 0 with ``unit`` ``none`` is local compute.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    unit: Literal["image", "mtok_in", "none"]
+    usd: float
+    priced_at: str = Field(alias="pricedAt")
+    source: str
+    note: Optional[str] = None
+
+
+class CatalogLimits(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    max_reference_images: Optional[int] = Field(default=None, alias="maxReferenceImages")
+
+
+class CatalogModel(BaseModel):
+    """A model a caller may pass as ``model``.
+
+    ``reach`` is ``automatic`` when it may be the operation's default
+    (validated) and ``explicit`` when it runs only when named (candidate).
+    Retired models are absent; naming one is refused with ``model_not_available``.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    id: str
+    label: str
+    provider: Literal["openai", "kieai", "fleet"]
+    lifecycle: Literal["validated", "candidate"]
+    reach: Literal["automatic", "explicit"]
+    quality: Literal["draft", "standard", "premium"]
+    price: CatalogPrice
+    limits: Optional[CatalogLimits] = None
+    notes: Optional[str] = None
+
+
+class CatalogOperationView(BaseModel):
+    """One operation's models; ``default`` is the model used when a run names none."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    operation: CatalogOperation
+    default: str
+    models: List[CatalogModel]
+
+
+class ModelCatalog(BaseModel):
+    """Every model a caller may pass as ``model``, per operation. Mirrors ``ModelCatalog`` in @whizurai/types."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    version: str
+    operations: List[CatalogOperationView]
+
+
 # ─── Outcome runs (/v1/outcomes) ────────────────────────────────────────────
 #
 # Mirrors ``@whizurai/types/outcomes`` 1.9.0. Only what interactive item runs
@@ -1116,6 +1182,7 @@ class ImageGenerateInput(BaseModel):
     )
     n: Optional[int] = Field(default=None, ge=1, le=4)
     seed: Optional[int] = Field(default=None, ge=0, le=4_294_967_295)
+    # A catalogue id from GET /v1/model-router/catalog (operation image_generate); None: the default.
     model: Optional[str] = None
     provider: Optional[str] = None
     reference_image_url: Optional[str] = Field(

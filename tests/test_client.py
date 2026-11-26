@@ -425,3 +425,51 @@ class TestHealth:
         assert table.tiers["standard"].default_model is None
         assert table.models[0].route_tier == "standard"
         assert table.models[0].reach == "explicit"
+
+    async def test_get_model_catalog(self, client):
+        client._make_request = AsyncMock(
+            return_value={
+                "version": "2026-11-25.1",
+                "operations": [
+                    {
+                        "operation": "image_edit",
+                        "default": "gpt-image-2",
+                        "models": [
+                            {
+                                "id": "nano-banana-pro",
+                                "label": "Nano Banana Pro",
+                                "provider": "kieai",
+                                "lifecycle": "candidate",
+                                "reach": "explicit",
+                                "quality": "premium",
+                                "price": {
+                                    "unit": "image",
+                                    "usd": 0.09,
+                                    "pricedAt": "2026-11-25",
+                                    "source": "https://kie.ai/pricing",
+                                },
+                                "limits": {"maxReferenceImages": 7},
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        catalog = await client.get_model_catalog("image_edit")
+        client._make_request.assert_awaited_once_with(
+            "GET", "/v1/model-router/catalog", params={"operation": "image_edit"}
+        )
+        op = catalog.operations[0]
+        assert op.default == "gpt-image-2"
+        model = op.models[0]
+        assert model.reach == "explicit"
+        assert model.price.priced_at == "2026-11-25"
+        assert model.limits.max_reference_images == 7
+        assert model.notes is None
+
+    async def test_get_model_catalog_all_operations(self, client):
+        client._make_request = AsyncMock(return_value={"version": "1", "operations": []})
+        await client.get_model_catalog()
+        client._make_request.assert_awaited_once_with(
+            "GET", "/v1/model-router/catalog", params=None
+        )

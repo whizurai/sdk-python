@@ -35,6 +35,7 @@ from .types import (
     ListCapabilitiesResponse,
     ListRunsResponse,
     ListTriggersResponse,
+    ModelCatalog,
     NetworkError,
     NotFoundError,
     OutcomeExecutionPolicy,
@@ -57,7 +58,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.12.0"
+SDK_VERSION = "2.13.0"
 
 
 class WhizuraiClient:
@@ -578,6 +579,18 @@ class WhizuraiClient:
         """
         data = await self._make_request("GET", "/v1/model-router/video-routes")
         return VideoRouteTable.model_validate(data)
+
+    async def get_model_catalog(self, operation: Optional[str] = None) -> ModelCatalog:
+        """The model catalogue (``GET /v1/model-router/catalog``).
+
+        Every model a caller may pass as ``model``, per operation
+        (``image_generate``, ``image_edit``), with the operation's default and
+        a dated provider price. Pass ``operation`` for one operation only; the
+        platform answers 400 for an unknown one.
+        """
+        params = {"operation": operation} if operation else None
+        data = await self._make_request("GET", "/v1/model-router/catalog", params=params)
+        return ModelCatalog.model_validate(data)
 
     async def ping(self) -> bool:
         """Return ``True`` if the platform is reachable."""
