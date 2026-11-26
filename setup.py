@@ -15,7 +15,7 @@ if requirements_file.exists():
 
 setup(
     name="whizurai-sdk",
-    version="2.12.0",
+    version="2.13.0",
     author="Whizurai",
     author_email="dev@whizurai.com",
     description="Official Python SDK for the Whizurai Platform",
