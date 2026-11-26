@@ -18,6 +18,7 @@ import httpx
 from httpx import ConnectError, HTTPError, TimeoutException
 
 from .types import (
+    TERMINAL_OUTCOME_RUN_STATUSES,
     TERMINAL_RUN_STATUSES,
     APIError,
     Artifact,
@@ -58,7 +59,7 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
-SDK_VERSION = "2.13.0"
+SDK_VERSION = "2.14.0"
 
 
 class WhizuraiClient:
@@ -1121,6 +1122,30 @@ class OutcomesResource:
         """One run's status (``GET /v1/outcomes/runs/{id}``)."""
         data = await self._client._make_request("GET", self._run_path(run_id))
         return OutcomeRun.model_validate(data["outcomeRun"])
+
+    async def poll_until_done(
+        self,
+        run_id: str,
+        interval: float = 2.0,
+        timeout: float = 600.0,
+    ) -> OutcomeRun:
+        """Poll :meth:`get_run` until the run is ``SUCCEEDED``, ``FAILED`` or ``CANCELLED``.
+
+        A ``FAILED`` run is returned, not raised: check ``status`` and
+        ``error_message``. Raises :class:`TimeoutError` when ``timeout`` seconds
+        pass first. Matches sdk-js ``outcomes.pollUntilDone``.
+        """
+        loop = asyncio.get_event_loop()
+        start = loop.time()
+        while True:
+            run = await self.get_run(run_id)
+            if run.status in TERMINAL_OUTCOME_RUN_STATUSES:
+                return run
+            if loop.time() - start >= timeout:
+                raise TimeoutError(
+                    f"Outcome run {run_id} did not finish within {timeout}s"
+                )
+            await asyncio.sleep(interval)
 
     async def workspace(self, run_id: str) -> Dict[str, Any]:
         """Server-derived state of an interactive run (``GET .../workspace``), camelCase keys."""

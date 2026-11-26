@@ -53,7 +53,7 @@ asyncio.run(main())
 | `client.runs` | `get`, `list`, `logs`, `artifacts`, `poll_until_done` |
 | `client.artifacts` | `list`, `get` |
 | `client.triggers` | `list`, `get`, `create`, `update`, `delete`, `test` |
-| `client.outcomes` | `run`, `get_run`, `workspace`, `command`, `invocation`, `events` |
+| `client.outcomes` | `run`, `get_run`, `poll_until_done`, `workspace`, `command`, `invocation`, `events` |
 
 Plus `client.health_check()`, `client.get_status()`, `client.ping()`, and the
 direct-inference methods `client.embed()` / `client.rerank()` /
@@ -86,13 +86,17 @@ preview = await client.outcomes.command(
 
 detail = await client.outcomes.invocation(handle.id, out["result"]["invocationIds"][0])
 trail = await client.outcomes.events(handle.id)  # List[OutcomeRunEvent], oldest first
+
+# Wait for the run to finish: SUCCEEDED, FAILED or CANCELLED. A FAILED run is
+# returned (check run.status / run.error_message); TimeoutError after `timeout` s.
+run = await client.outcomes.poll_until_done(handle.id, interval=2.0, timeout=600.0)
 ```
 
 A stale command raises `APIError` with `status_code == 409` (`STATE_CHANGED`
 and friends); `err.response["workspace"]` is the current workspace. The
 command shapes are the `InteractiveCommand` union in `@whizurai/types`.
-Not yet in this SDK: `assets`, `list_runs` and `poll_until_done` for outcome
-runs (the JS SDK has them).
+Not yet in this SDK: `assets` and `list_runs` for outcome runs (the JS SDK has
+them).
 
 ## Image generation with a reference image
 

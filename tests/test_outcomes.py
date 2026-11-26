@@ -124,3 +124,28 @@ async def test_events(client):
     assert events[0].actor_type == "api_key"
     client._make_request = AsyncMock(return_value={})
     assert await client.outcomes.events("or_1") == []
+
+
+async def test_poll_until_done_returns_failed_run(client):
+    client._make_request = AsyncMock(
+        side_effect=[
+            {"outcomeRun": {"id": "or_1", "status": "RUNNING"}},
+            {"outcomeRun": {"id": "or_1", "status": "FAILED", "errorMessage": "boom"}},
+        ]
+    )
+    run = await client.outcomes.poll_until_done("or_1", interval=0)
+    assert run.status == "FAILED" and run.error_message == "boom"
+    assert client._make_request.call_count == 2
+    assert client._make_request.call_args[0] == ("GET", "/v1/outcomes/runs/or_1")
+
+
+async def test_poll_until_done_stops_on_succeeded(client):
+    client._make_request = AsyncMock(return_value={"outcomeRun": {"id": "or_1", "status": "SUCCEEDED"}})
+    run = await client.outcomes.poll_until_done("or_1", interval=0)
+    assert run.status == "SUCCEEDED" and client._make_request.call_count == 1
+
+
+async def test_poll_until_done_times_out(client):
+    client._make_request = AsyncMock(return_value={"outcomeRun": {"id": "or_1", "status": "RUNNING"}})
+    with pytest.raises(whizurai.TimeoutError):
+        await client.outcomes.poll_until_done("or_1", interval=0, timeout=0)
